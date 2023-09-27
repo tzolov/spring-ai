@@ -32,9 +32,12 @@ import org.springframework.util.Assert;
  *
  * @author Christian Tzolov
  */
-public class Main {
+public class Main2 {
 
 	public static void main(String[] args) throws IOException {
+
+		int inputPage = 3;
+		int inputPosition1 = 250;
 
 		String resourceName = "file:spring-ai-core/src/test/resources/spring-framework.pdf";
 
@@ -49,11 +52,12 @@ public class Main {
 		PDFLayoutTextStripperByArea pdfTextStripper = new PDFLayoutTextStripperByArea();
 		pdfTextStripper.setSortByPosition(true);
 
-		int pageNumber = 3 - 1;
-		// int pageNumber = 6 - 1;
+		int realPosition = (int) pageDimensions.getHeight() - inputPosition1;
+
+		int pageNumber = inputPage - 1;
 
 		int y0 = 0;
-		int yW = (int) pageDimensions.getHeight() - 250;
+		int yW = realPosition;
 
 		pdfTextStripper.addRegion("startPageRegionName",
 				new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
@@ -63,8 +67,8 @@ public class Main {
 		System.out.println(text);
 		System.out.println(" -------------------------------------------- ");
 		//
-		y0 = (int) pageDimensions.getHeight() - 250;
-		yW = 250;
+		y0 = realPosition;
+		yW = (int) pageDimensions.getHeight() - realPosition;
 
 		pdfTextStripper.addRegion("endPageRegionName",
 				new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
