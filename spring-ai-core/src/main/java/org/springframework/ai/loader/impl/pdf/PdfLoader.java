@@ -17,11 +17,12 @@
 package org.springframework.ai.loader.impl.pdf;
 
 import java.awt.Rectangle;
-import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import java.util.zip.ZipInputStream;
+import java.util.Random;
 
 import io.github.jonathanlink.PDFLayoutTextStripper;
 import org.apache.pdfbox.io.RandomAccessBuffer;
@@ -29,6 +30,7 @@ import org.apache.pdfbox.pdfparser.PDFParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageTree;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageXYZDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineNode;
 
@@ -37,7 +39,9 @@ import org.springframework.ai.loader.Loader;
 import org.springframework.ai.splitter.TextSplitter;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
+import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 /**
  *
@@ -45,9 +49,7 @@ import org.springframework.util.CollectionUtils;
  */
 public class PdfLoader implements Loader {
 
-	private MyExtractor myExtractor;
-
-	private Rectangle rectangle;
+	private final ParagraphTextExtractor paragraphTextExtractor;
 
 	private final int tocLevel;
 
@@ -65,6 +67,8 @@ public class PdfLoader implements Loader {
 
 		private int endPageNumber;
 
+		private int position = 0;
+
 		private List<Paragraph> children = new ArrayList<>();
 
 		public Paragraph(Paragraph parent, String title, int level, int startPageNumber, int endPageNumber) {
@@ -73,6 +77,14 @@ public class PdfLoader implements Loader {
 			this.level = level;
 			this.startPageNumber = startPageNumber;
 			this.endPageNumber = endPageNumber;
+		}
+
+		public int getPosition() {
+			return position;
+		}
+
+		public void setPosition(int topPosition) {
+			this.position = topPosition;
 		}
 
 		public Paragraph getParent() {
@@ -133,16 +145,12 @@ public class PdfLoader implements Loader {
 	}
 
 	public PdfLoader(Resource pdfResource, int tocLevel) {
-		this.myExtractor = new MyExtractor(pdfResource);
+		this(pdfResource, tocLevel, null);
+	}
+
+	public PdfLoader(Resource pdfResource, int tocLevel, Rectangle pageDimensions) {
+		this.paragraphTextExtractor = new ParagraphTextExtractor(pdfResource, pageDimensions);
 		this.tocLevel = tocLevel;
-	}
-
-	public void setRectangle(Rectangle rectangle) {
-		this.rectangle = rectangle;
-	}
-
-	public Rectangle getRectangle() {
-		return rectangle;
 	}
 
 	public void setInterLevelText(boolean generateInterLevelText) {
@@ -153,19 +161,26 @@ public class PdfLoader implements Loader {
 		return interLevelText;
 	}
 
-	@Override
-	public List<Document> load() {
+	public ParagraphTextExtractor getParagraphTextExtractor() {
+		return paragraphTextExtractor;
+	}
 
-		var paragraphs = this.myExtractor.getParagraphsByLevel(this.myExtractor.getRootParagraph(), this.tocLevel,
+	// @Override
+	public List<Document> load2() {
+
+		var paragraphs = this.paragraphTextExtractor.getParagraphsByLevel(
+				this.paragraphTextExtractor.getRootParagraph(), this.tocLevel,
 				this.interLevelText);
 
 		List<Document> documents = new ArrayList<>(paragraphs.size());
 
 		for (Paragraph paragraph : paragraphs) {
-			String docText = (this.rectangle != null)
-					? this.myExtractor.extractTextByRegion(this.rectangle, paragraph.getStartPageNumber(),
+			String docText = (this.paragraphTextExtractor.getPageDimensions() != null)
+					? this.paragraphTextExtractor.extractTextByRegion(this.paragraphTextExtractor.getPageDimensions(),
+							paragraph.getStartPageNumber(),
 							paragraph.getEndPageNumber())
-					: this.myExtractor.extractText(paragraph.getStartPageNumber(), paragraph.getEndPageNumber());
+					: this.paragraphTextExtractor.extractText(paragraph.getStartPageNumber(),
+							paragraph.getEndPageNumber());
 			Document document = new Document(docText);
 			document.getMetadata().put("title", paragraph.getTitle());
 			document.getMetadata().put("level", paragraph.getLevel());
@@ -177,16 +192,54 @@ public class PdfLoader implements Loader {
 		return documents;
 	}
 
+	public List<Document> load() {
+
+		var paragraphs = this.paragraphTextExtractor.flatten();
+
+		List<Document> documents = new ArrayList<>(paragraphs.size());
+
+		if (!CollectionUtils.isEmpty(paragraphs)) {
+			Iterator<Paragraph> itr = paragraphs.iterator();
+
+			var current = itr.next();
+
+			if (!itr.hasNext()) {
+				documents.add(toDocument(current, current, this.paragraphTextExtractor.getPageDimensions()));
+			}
+			else {
+				while (itr.hasNext()) {
+					var next = itr.next();
+					documents.add(toDocument(current, next, this.paragraphTextExtractor.getPageDimensions()));
+					current = next;
+				}
+			}
+		}
+
+		return documents;
+	}
+
+	private Document toDocument(Paragraph from, Paragraph to, Rectangle pageDimensions) {
+		String docText = this.paragraphTextExtractor.extractText2(from, to, 40, 15);
+		Document document = new Document(docText);
+		document.getMetadata().put("title", from.getTitle());
+		document.getMetadata().put("level", from.getLevel());
+		document.getMetadata().put("startPage", from.getStartPageNumber());
+		document.getMetadata().put("endPage", to.getStartPageNumber());
+		return document;
+	}
+
 	@Override
 	public List<Document> load(TextSplitter textSplitter) {
 		return load();
 	}
 
-	public static class MyExtractor {
+	public static class ParagraphTextExtractor {
 
 		private final Paragraph rootParagraph;
 
 		private final PDDocument document;
+
+		private final Rectangle pageDimensions;
 
 		public Paragraph getRootParagraph() {
 			return rootParagraph;
@@ -196,11 +249,17 @@ public class PdfLoader implements Loader {
 			return document;
 		}
 
-		public MyExtractor(Resource pdfResource) {
+		public Rectangle getPageDimensions() {
+			return this.pageDimensions;
+		}
+
+		public ParagraphTextExtractor(Resource pdfResource, Rectangle pageDimensions) {
 			try {
 				PDFParser pdfParser = new PDFParser(new RandomAccessBuffer(pdfResource.getInputStream()));
 				pdfParser.parse();
 				this.document = new PDDocument(pdfParser.getDocument());
+
+				this.pageDimensions = (pageDimensions != null) ? pageDimensions : determinePageDimensions();
 
 				this.rootParagraph = generateParagraphs(
 						new Paragraph(null, "root", -1, 1, this.document.getNumberOfPages()),
@@ -215,11 +274,49 @@ public class PdfLoader implements Loader {
 
 		}
 
+		public List<Paragraph> flatten() {
+			List<Paragraph> paragraphs = new ArrayList<>();
+			for (var child : this.rootParagraph.getChildren()) {
+				flatten(child, paragraphs);
+			}
+			return paragraphs;
+		}
+
+		private void flatten(Paragraph current, List<Paragraph> paragraphs) {
+			paragraphs.add(current);
+			for (var child : current.getChildren()) {
+				flatten(child, paragraphs);
+			}
+		}
+
+		private Rectangle determinePageDimensions() {
+
+			var numberOfPages = this.document.getNumberOfPages();
+
+			Assert.isTrue(numberOfPages > 0, "At least one page is expected in the document");
+
+			var rect1 = this.document.getPages().get(new Random().nextInt(numberOfPages)).getMediaBox();
+			var rect2 = this.document.getPages().get(new Random().nextInt(numberOfPages)).getMediaBox();
+			Assert.isTrue(rect1.getLowerLeftX() == rect2.getLowerLeftX()
+					&& rect1.getLowerLeftY() == rect2.getLowerLeftY()
+					&& rect1.getWidth() == rect2.getWidth()
+					&& rect1.getHeight() == rect2.getHeight(), "All pages should have same size!");
+
+			return new Rectangle((int) rect1.getLowerLeftX(), (int) rect1.getLowerLeftY(), (int) rect1.getWidth(),
+					(int) rect1.getHeight());
+		}
+
 		public void printParagraph(Paragraph paragraph) {
 			System.out.println(paragraph);
 			for (Paragraph childParagraph : paragraph.getChildren()) {
 				printParagraph(childParagraph);
 			}
+		}
+
+		void print(String title, PDPageXYZDestination dest) {
+			System.out.println(
+					"DEST:" + title + " - " + dest.getLeft() + ":" + dest.getTop() + ":"
+							+ dest.getZoom());
 		}
 
 		public Paragraph generateParagraphs(Paragraph parentParagraph, PDOutlineNode bookmark,
@@ -237,6 +334,14 @@ public class PdfLoader implements Loader {
 				var currentParagraph = new Paragraph(parentParagraph, current.getTitle(), level, pageNumber,
 						nextSiblingNumber);
 				parentParagraph.getChildren().add(currentParagraph);
+
+				if (current.getDestination() instanceof PDPageXYZDestination) {
+					currentParagraph.setPosition(((PDPageXYZDestination) current.getDestination()).getTop());
+				}
+				else {
+					currentParagraph.setPosition((int) this.pageDimensions.getHeight());
+				}
+				// print(current.getTitle(), (PDPageXYZDestination) dest);
 
 				generateParagraphs(currentParagraph, current, level + 1); // reverse loop on ToC
 				current = current.getNextSibling();
@@ -307,7 +412,8 @@ public class PdfLoader implements Loader {
 
 				StringBuilder sb = new StringBuilder();
 				for (int pageNumber = startPage - 1; pageNumber < endPage; pageNumber++) {
-					pdfTextStripper.extractRegions(this.document.getPage(pageNumber));
+					var page = this.document.getPage(pageNumber);
+					pdfTextStripper.extractRegions(page);
 					sb.append(pdfTextStripper.getTextForRegion("regionName"));
 				}
 
@@ -332,6 +438,73 @@ public class PdfLoader implements Loader {
 			}
 		}
 
+
+		public String extractText2(Paragraph fromParagraph, Paragraph toParagraph, int topMargin, int bottomMargin) {
+
+			int startPage = fromParagraph.getStartPageNumber() - 1;
+			int endPage = toParagraph.getStartPageNumber() - 1;
+
+			try {
+
+				StringBuilder sb = new StringBuilder();
+
+				for (int pageNumber = startPage; pageNumber <= endPage; pageNumber++) {
+
+					var page = this.document.getPage(pageNumber);
+					var pdfTextStripper = new PDFLayoutTextStripperByArea();
+					pdfTextStripper.setSortByPosition(true);
+
+					int x0 = (int) page.getMediaBox().getLowerLeftX();
+					int xW = (int) page.getMediaBox().getWidth();
+					int y0 = (int) page.getMediaBox().getLowerLeftY() + topMargin;
+					int yW = (int) page.getMediaBox().getHeight() - (topMargin + bottomMargin);
+
+					if (pageNumber == startPage) {
+						y0 = (int) page.getMediaBox().getHeight() - fromParagraph.getPosition();
+						yW = fromParagraph.getPosition() - bottomMargin;
+						// yW = fromParagraph.getTopPosition();
+					}
+					if (pageNumber == endPage) {
+						yW = Math.abs(yW - toParagraph.getPosition());
+					}
+
+					pdfTextStripper.addRegion("pdfPageRegion", new Rectangle(x0, y0, xW, yW));
+					pdfTextStripper.extractRegions(page);
+					var text = pdfTextStripper.getTextForRegion("pdfPageRegion");
+					if (StringUtils.hasText(text)) {
+						System.out.println(text);
+						sb.append(text);
+					}
+					pdfTextStripper.removeRegion("pdfPageRegion");
+
+				}
+				if (StringUtils.hasText(sb.toString())) {
+					System.out.println("----------------------------------------------------------");
+				}
+				return sb.toString();
+			}
+			catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		}
+
+		public void pageDimensions() throws IOException {
+
+			for (int i = 0; i < this.document.getNumberOfPages(); i++) {
+				System.out.println(this.document.getPage(i).getMediaBox());
+			}
+		}
+
+	}
+
+	private static void writeToFile(String fileName, List<Document> docs) throws IOException {
+		var writer = new FileWriter(fileName, false);
+
+		for (Document doc : docs) {
+			writer.write(doc.getText());
+		}
+
+		writer.close();
 	}
 
 	public static void main(String[] args) throws IOException {
@@ -339,10 +512,12 @@ public class PdfLoader implements Loader {
 				"file:spring-ai-core/src/test/resources/spring-framework.pdf");
 
 		PdfLoader pdfLoader = new PdfLoader(pdfResource, 1);
+		// pdfLoader.getMyExtractor().pageDimensions();//[0.0,0.0,595.28,841.89]
 
-		// pdfLoader.setRectangle(new Rectangle(51, 51, 531, 71));
+		// pdfLoader.setRectangle(new Rectangle(20, 25, 595 - 20, 841 - 44));
 		var docs = pdfLoader.load();
 
+		writeToFile("spring-ai-core/target/docs1.txt", docs);
 		System.out.println(docs.size());
 
 	}
