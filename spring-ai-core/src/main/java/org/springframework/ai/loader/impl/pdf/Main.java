@@ -29,7 +29,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
 
 /**
- *
  * @author Christian Tzolov
  */
 public class Main {
@@ -55,8 +54,7 @@ public class Main {
 		int y0 = 0;
 		int yW = (int) pageDimensions.getHeight() - 250;
 
-		pdfTextStripper.addRegion("startPageRegionName",
-				new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
+		pdfTextStripper.addRegion("startPageRegionName", new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
 
 		pdfTextStripper.extractRegions(document.getPage(pageNumber));
 		var text = pdfTextStripper.getTextForRegion("startPageRegionName");
@@ -66,8 +64,7 @@ public class Main {
 		y0 = (int) pageDimensions.getHeight() - 250;
 		yW = 250;
 
-		pdfTextStripper.addRegion("endPageRegionName",
-				new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
+		pdfTextStripper.addRegion("endPageRegionName", new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
 
 		pdfTextStripper.extractRegions(document.getPage(pageNumber));
 		text = pdfTextStripper.getTextForRegion("endPageRegionName");
@@ -79,8 +76,7 @@ public class Main {
 		var x0 = (int) pageDimensions.getX();
 		var xW = (int) pageDimensions.getWidth();
 
-		pdfTextStripper.addRegion("pageDimensions1",
-				new Rectangle(x0, y0, xW, yW));
+		pdfTextStripper.addRegion("pageDimensions1", new Rectangle(x0, y0, xW, yW));
 
 		pdfTextStripper.extractRegions(document.getPage(pageNumber));
 		text = pdfTextStripper.getTextForRegion("pageDimensions1");
@@ -96,14 +92,15 @@ public class Main {
 
 		var rect1 = document.getPages().get(new Random().nextInt(numberOfPages)).getMediaBox();
 		var rect2 = document.getPages().get(new Random().nextInt(numberOfPages)).getMediaBox();
-		Assert.isTrue(rect1.getLowerLeftX() == rect2.getLowerLeftX()
-				&& rect1.getLowerLeftY() == rect2.getLowerLeftY()
-				&& rect1.getWidth() == rect2.getWidth()
-				&& rect1.getHeight() == rect2.getHeight(), "All pages should have same size!");
+		Assert.isTrue(
+				rect1.getLowerLeftX() == rect2.getLowerLeftX() && rect1.getLowerLeftY() == rect2.getLowerLeftY()
+						&& rect1.getWidth() == rect2.getWidth() && rect1.getHeight() == rect2.getHeight(),
+				"All pages should have same size!");
 
 		return new Rectangle((int) rect1.getLowerLeftX(), (int) rect1.getLowerLeftY(), (int) rect1.getWidth(),
 				(int) rect1.getHeight());
 	}
 
 	// 1.3. Design Philosophy - p. 3 topPos: 250
+
 }
