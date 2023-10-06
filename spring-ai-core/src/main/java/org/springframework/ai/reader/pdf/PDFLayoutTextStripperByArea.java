@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.loader.impl.pdf;
+package org.springframework.ai.reader.pdf;
 
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;

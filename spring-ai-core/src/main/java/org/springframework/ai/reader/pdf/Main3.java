@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.loader.impl.pdf;
+package org.springframework.ai.reader.pdf;
 
 import java.awt.Rectangle;
 import java.io.IOException;
@@ -31,12 +31,13 @@ import org.springframework.util.Assert;
 /**
  * @author Christian Tzolov
  */
-public class Main2 {
+public class Main3 {
 
 	public static void main(String[] args) throws IOException {
 
-		int inputPage = 3;
-		int inputPosition1 = 250;
+		int inputPage = 5;
+		int inputPosition1 = 841;
+		int inputPosition2 = 543;
 
 		String resourceName = "file:spring-ai-core/src/test/resources/spring-framework.pdf";
 
@@ -51,12 +52,13 @@ public class Main2 {
 		PDFLayoutTextStripperByArea pdfTextStripper = new PDFLayoutTextStripperByArea();
 		pdfTextStripper.setSortByPosition(true);
 
-		int realPosition = (int) pageDimensions.getHeight() - inputPosition1;
+		int realPosition1 = (int) pageDimensions.getHeight() - inputPosition1;
+		int realPosition2 = (int) pageDimensions.getHeight() - inputPosition2;
 
 		int pageNumber = inputPage - 1;
 
-		int y0 = 0;
-		int yW = realPosition;
+		int y0 = realPosition1;
+		int yW = realPosition2 - realPosition1;
 
 		pdfTextStripper.addRegion("startPageRegionName", new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
 
@@ -65,8 +67,8 @@ public class Main2 {
 		System.out.println(text);
 		System.out.println(" -------------------------------------------- ");
 		//
-		y0 = realPosition;
-		yW = (int) pageDimensions.getHeight() - realPosition;
+		y0 = realPosition1;
+		yW = (int) pageDimensions.getHeight() - realPosition1;
 
 		pdfTextStripper.addRegion("endPageRegionName", new Rectangle(0, y0, (int) pageDimensions.getWidth(), yW));
 
@@ -105,6 +107,8 @@ public class Main2 {
 				(int) rect1.getHeight());
 	}
 
-	// 1.3. Design Philosophy - p. 3 topPos: 250
+	// 1.3. Design Philosophy - p. 3 pos: 250
+	// "Chapter 2. Core Technologies" p. 5 pos: 841
+	// "2.1. The IoC Container" p.5 pos: 543
 
 }

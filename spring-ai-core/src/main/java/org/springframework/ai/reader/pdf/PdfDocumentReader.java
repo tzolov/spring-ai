@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.loader.impl.pdf;
+package org.springframework.ai.reader.pdf;
 
 import java.awt.Rectangle;
 import java.io.FileWriter;
@@ -34,8 +34,7 @@ import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlin
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineNode;
 
 import org.springframework.ai.document.Document;
-import org.springframework.ai.loader.Loader;
-import org.springframework.ai.splitter.TextSplitter;
+import org.springframework.ai.document.DocumentReader;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
@@ -45,7 +44,7 @@ import org.springframework.util.StringUtils;
 /**
  * @author Christian Tzolov
  */
-public class PdfLoader implements Loader {
+public class PdfDocumentReader implements DocumentReader {
 
 	private static final String METADATA_START_PAGE = "startPage";
 
@@ -59,9 +58,9 @@ public class PdfLoader implements Loader {
 
 	private final PDDocument document;
 
-	private PdfLoaderConfig config;
+	private PdfDocumentReaderConfig config;
 
-	public static class PdfLoaderConfig {
+	public static class PdfDocumentReaderConfig {
 
 		/**
 		 * In some PDF documents the PDOutlineItem destination (== paragraph position) is vertically inverted compared
@@ -87,12 +86,12 @@ public class PdfLoader implements Loader {
 		/**
 		 * {@return the default config}
 		 */
-		public static PdfLoaderConfig defaultConfig() {
+		public static PdfDocumentReaderConfig defaultConfig() {
 
 			return builder().build();
 		}
 
-		private PdfLoaderConfig(Builder builder) {
+		private PdfDocumentReaderConfig(Builder builder) {
 			this.pageBottomMargin = builder.pageBottomMargin;
 			this.pageTopMargin = builder.pageTopMargin;
 			this.reversedParagraphPosition = builder.reversedParagraphPosition;
@@ -113,7 +112,7 @@ public class PdfLoader implements Loader {
 			}
 
 			/**
-			 * Configures the PdfLoader page top margin. Defaults to 0.
+			 * Configures the Pdf reader page top margin. Defaults to 0.
 			 * @param topMargin page top margin to use
 			 * @return this builder
 			 */
@@ -124,7 +123,7 @@ public class PdfLoader implements Loader {
 			}
 
 			/**
-			 * Configures the PdfLoader page bottom margin. Defaults to 0.
+			 * Configures the Pdf reader page bottom margin. Defaults to 0.
 			 * @param bottomMargin page top margin to use
 			 * @return this builder
 			 */
@@ -135,7 +134,7 @@ public class PdfLoader implements Loader {
 			}
 
 			/**
-			 * Configures the PdfLoader reverse paragraph position. Defaults to false.
+			 * Configures the Pdf reader reverse paragraph position. Defaults to false.
 			 * @param reversedParagraphPosition to reverse or not the paragraph position withing a page.
 			 * @return this builder
 			 */
@@ -145,7 +144,7 @@ public class PdfLoader implements Loader {
 			}
 
 			/**
-			 * Configures the PdfLoader to align the document text to the left. Defaults to false.
+			 * Configures the Pdf reader to align the document text to the left. Defaults to false.
 			 * @param textLeftAlignment flag to align the text to the left.
 			 * @return this builder
 			 */
@@ -157,8 +156,8 @@ public class PdfLoader implements Loader {
 			/**
 			 * {@return the immutable configuration}
 			 */
-			public PdfLoaderConfig build() {
-				return new PdfLoaderConfig(this);
+			public PdfDocumentReaderConfig build() {
+				return new PdfDocumentReaderConfig(this);
 			}
 		}
 
@@ -183,19 +182,19 @@ public class PdfLoader implements Loader {
 
 	}
 
-	public PdfLoader(String resourceUrl) {
+	public PdfDocumentReader(String resourceUrl) {
 		this(new DefaultResourceLoader().getResource(resourceUrl));
 	}
 
-	public PdfLoader(Resource pdfResource) {
-		this(pdfResource, PdfLoaderConfig.defaultConfig());
+	public PdfDocumentReader(Resource pdfResource) {
+		this(pdfResource, PdfDocumentReaderConfig.defaultConfig());
 	}
 
-	public PdfLoader(String resourceUrl, PdfLoaderConfig config) {
+	public PdfDocumentReader(String resourceUrl, PdfDocumentReaderConfig config) {
 		this(new DefaultResourceLoader().getResource(resourceUrl), config);
 	}
 
-	public PdfLoader(Resource pdfResource, PdfLoaderConfig config) {
+	public PdfDocumentReader(Resource pdfResource, PdfDocumentReaderConfig config) {
 
 		try {
 			PDFParser pdfParser = new PDFParser(new RandomAccessBuffer(pdfResource.getInputStream()));
@@ -212,7 +211,7 @@ public class PdfLoader implements Loader {
 	}
 
 	@Override
-	public List<Document> load() {
+	public List<Document> get() {
 
 		var paragraphs = this.paragraphTextExtractor.flattenParagraphTree();
 
@@ -230,7 +229,7 @@ public class PdfLoader implements Loader {
 				while (itr.hasNext()) {
 					var next = itr.next();
 					Document document = toDocument(current, next);
-					if (StringUtils.hasText(document.getText())) {
+					if (StringUtils.hasText(document.getContent())) {
 						documents.add(document);
 					}
 					current = next;
@@ -241,14 +240,9 @@ public class PdfLoader implements Loader {
 		return documents;
 	}
 
-	@Override
-	public List<Document> load(TextSplitter textSplitter) {
-		return load();
-	}
-
 	private Document toDocument(Paragraph from, Paragraph to) {
 
-		String docText = this.getTextBetweenParagraphs2(from, to);
+		String docText = this.getTextBetweenParagraphs(from, to);
 
 		Document document = new Document(docText);
 		document.getMetadata().put(METADATA_TITLE, from.title());
@@ -568,7 +562,7 @@ public class PdfLoader implements Loader {
 			if (withDocumentMarkers) {
 				writer.write("\n### [" + i + "] ###\n");
 			}
-			writer.write(doc.getText());
+			writer.write(doc.getContent());
 			i++;
 		}
 
@@ -584,15 +578,16 @@ public class PdfLoader implements Loader {
 		// // .withTextLeftAlignment(true)
 		// .build());
 
-		PdfLoader pdfLoader = new PdfLoader("file:spring-ai-core/src/test/resources/mpb.pdf",
-				PdfLoaderConfig.builder()
+		// PdfDocumentReader pdfReader = new PdfDocumentReader("file:spring-ai-core/src/test/resources/mpb.pdf",
+		PdfDocumentReader pdfReader = new PdfDocumentReader("file:spring-ai-core/src/test/resources/uber-k-10.pdf",
+				PdfDocumentReaderConfig.builder()
 						.withPageTopMargin(80)
 						.withPageBottomMargin(60)
 						.build());
 
-		var documents = pdfLoader.load();
+		var documents = pdfReader.get();
 
-		writeToFile("spring-ai-core/target/docs1.txt", documents, true);
+		writeToFile("spring-ai-core/target/uber-k-10.txt", documents, true);
 		System.out.println(documents.size());
 
 	}
