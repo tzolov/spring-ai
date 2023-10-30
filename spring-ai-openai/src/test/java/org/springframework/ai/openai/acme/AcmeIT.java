@@ -33,9 +33,6 @@ public class AcmeIT extends AbstractIT {
 
 	private static final Logger logger = LoggerFactory.getLogger(AcmeIT.class);
 
-	@Value("classpath:/data/acme/bikes.json")
-	private Resource bikesResource;
-
 	@Value("classpath:/prompts/acme/system-qa.st")
 	private Resource systemBikePrompt;
 
@@ -47,7 +44,7 @@ public class AcmeIT extends AbstractIT {
 
 	@Test
 	void beanTest() {
-		assertThat(bikesResource).isNotNull();
+		// assertThat(bikesResource).isNotNull();
 		assertThat(embeddingClient).isNotNull();
 		assertThat(aiClient).isNotNull();
 	}
@@ -56,7 +53,7 @@ public class AcmeIT extends AbstractIT {
 	void acmeChain() {
 
 		// Step 1 - load documents
-		JsonReader jsonReader = new JsonReader(bikesResource, "name", "price", "shortDescription", "description");
+		JsonReader jsonReader = new JsonReader("name", "price", "shortDescription", "description");
 
 		var textSplitter = new TokenTextSplitter();
 
@@ -65,7 +62,7 @@ public class AcmeIT extends AbstractIT {
 		logger.info("Creating Embeddings...");
 		VectorStore vectorStore = new InMemoryVectorStore(embeddingClient);
 
-		vectorStore.accept(textSplitter.apply(jsonReader.get()));
+		vectorStore.accept(textSplitter.apply(jsonReader.apply("classpath:/data/acme/bikes.json")));
 
 		// Now user query
 

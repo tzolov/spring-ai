@@ -18,16 +18,11 @@ import org.springframework.util.StreamUtils;
  * @author Craig Walls
  * @author Christian Tzolov
  */
-public class TextReader implements DocumentReader {
+public class TextReader implements DocumentReader<String> {
 
 	public static final String CHARSET_METADATA = "charset";
 
 	public static final String SOURCE_METADATA = "source";
-
-	/**
-	 * Input resource to load the text from.
-	 */
-	private final Resource resource;
 
 	/**
 	 * @return Character set to be used when loading data from the
@@ -35,15 +30,6 @@ public class TextReader implements DocumentReader {
 	private Charset charset = StandardCharsets.UTF_8;
 
 	private Map<String, Object> customMetadata = new HashMap<>();
-
-	public TextReader(String resourceUrl) {
-		this(new DefaultResourceLoader().getResource(resourceUrl));
-	}
-
-	public TextReader(Resource resource) {
-		Objects.requireNonNull(resource, "The Spring Resource must not be null");
-		this.resource = resource;
-	}
 
 	public void setCharset(Charset charset) {
 		Objects.requireNonNull(charset, "The charset must not be null");
@@ -63,18 +49,18 @@ public class TextReader implements DocumentReader {
 	}
 
 	@Override
-	public List<Document> get() {
+	public List<Document> apply(String resourceUri) {
+		Objects.requireNonNull(resourceUri, "The Spring Resource Uri must not be null");
+		var resource = new DefaultResourceLoader().getResource(resourceUri);
 		try {
 
-			String document = StreamUtils.copyToString(this.resource.getInputStream(), this.charset);
+			String document = StreamUtils.copyToString(resource.getInputStream(), this.charset);
 
 			// Inject source information as a metadata.
 			this.customMetadata.put(CHARSET_METADATA, this.charset.name());
-			this.customMetadata.put(SOURCE_METADATA, this.resource.getFilename());
+			this.customMetadata.put(SOURCE_METADATA, resource.getFilename());
 
 			return List.of(new Document(document, this.customMetadata));
-			// return textSplitter.apply(Collections.singletonList(new Document(document,
-			// this.customMetadata)));
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);

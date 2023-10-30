@@ -32,15 +32,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class TextReaderTests {
 
-	private Resource resource = new DefaultResourceLoader().getResource("classpath:text_source.txt");
-
 	@Test
 	void loadText() {
-		assertThat(resource).isNotNull();
-		TextReader textReader = new TextReader(resource);
+		TextReader textReader = new TextReader();
 		textReader.getCustomMetadata().put("customKey", "Value");
 
-		List<Document> documents0 = textReader.get();
+		List<Document> documents0 = textReader.apply("classpath:text_source.txt");
 
 		List<Document> documents = new TokenTextSplitter().apply(documents0);
 

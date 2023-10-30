@@ -23,17 +23,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 public class SimplePersistentVectorStoreIT {
 
-	@Value("file:src/test/resources/data/acme/bikes.json")
-	private Resource bikesJsonResource;
-
 	@Autowired
 	private EmbeddingClient embeddingClient;
 
 	@Test
 	void persist(@TempDir(cleanup = CleanupMode.ON_SUCCESS) Path workingDir) {
-		JsonReader jsonReader = new JsonReader(bikesJsonResource, new ProductMetadataGenerator(), "price", "name",
-				"shortDescription", "description", "tags");
-		List<Document> documents = jsonReader.get();
+		JsonReader jsonReader = new JsonReader(new ProductMetadataGenerator(), "price", "name", "shortDescription",
+				"description", "tags");
+		List<Document> documents = jsonReader.apply("file:src/test/resources/data/acme/bikes.json");
 		SimplePersistentVectorStore vectorStore = new SimplePersistentVectorStore(this.embeddingClient);
 		vectorStore.add(documents);
 

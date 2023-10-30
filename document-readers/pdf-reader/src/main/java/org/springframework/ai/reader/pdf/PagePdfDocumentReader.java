@@ -17,7 +17,6 @@
 package org.springframework.ai.reader.pdf;
 
 import java.awt.Rectangle;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +43,7 @@ import org.springframework.util.StringUtils;
  *
  * @author Christian Tzolov
  */
-public class PagePdfDocumentReader implements DocumentReader {
+public class PagePdfDocumentReader implements DocumentReader<String> {
 
 	private static final String PDF_PAGE_REGION = "pdfPageRegion";
 
@@ -54,42 +53,37 @@ public class PagePdfDocumentReader implements DocumentReader {
 
 	public static final String METADATA_FILE_NAME = "file_name";
 
-	private final PDDocument document;
-
 	private PdfDocumentReaderConfig config;
 
-	private File resourceFileName;
-
-	public PagePdfDocumentReader(String resourceUrl) {
-		this(new DefaultResourceLoader().getResource(resourceUrl));
+	public PagePdfDocumentReader() {
+		this(PdfDocumentReaderConfig.defaultConfig());
 	}
 
-	public PagePdfDocumentReader(Resource pdfResource) {
-		this(pdfResource, PdfDocumentReaderConfig.defaultConfig());
+	public PagePdfDocumentReader(PdfDocumentReaderConfig config) {
+		this.config = config;
 	}
 
-	public PagePdfDocumentReader(String resourceUrl, PdfDocumentReaderConfig config) {
-		this(new DefaultResourceLoader().getResource(resourceUrl), config);
-	}
-
-	public PagePdfDocumentReader(Resource pdfResource, PdfDocumentReaderConfig config) {
-
+	private PDDocument parsePdf(Resource pdfResource) {
 		try {
-
 			PDFParser pdfParser = new PDFParser(
 					new org.apache.pdfbox.io.RandomAccessReadBuffer(pdfResource.getInputStream()));
-			this.document = pdfParser.parse();
-
-			this.resourceFileName = pdfResource.getFile();
-			this.config = config;
+			return pdfParser.parse();
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);
 		}
 	}
 
+	private Resource toResource(String resourceUri) {
+		return new DefaultResourceLoader().getResource(resourceUri);
+	}
+
 	@Override
-	public List<Document> get() {
+	public List<Document> apply(String resourceUri) {
+
+		var pdfResource = toResource(resourceUri);
+
+		var pdfDocument = parsePdf(pdfResource);
 
 		List<Document> readDocuments = new ArrayList<>();
 		try {
@@ -101,7 +95,7 @@ public class PagePdfDocumentReader implements DocumentReader {
 
 			List<String> pageTextGroupList = new ArrayList<>();
 
-			for (PDPage page : this.document.getDocumentCatalog().getPages()) {
+			for (PDPage page : pdfDocument.getDocumentCatalog().getPages()) {
 
 				pagesPerDocument++;
 
@@ -111,7 +105,8 @@ public class PagePdfDocumentReader implements DocumentReader {
 
 					var aggregatedPageTextGroup = pageTextGroupList.stream().collect(Collectors.joining());
 					if (StringUtils.hasText(aggregatedPageTextGroup)) {
-						readDocuments.add(toDocument(aggregatedPageTextGroup, startPageNumber, pageNumber));
+						readDocuments.add(toDocument(aggregatedPageTextGroup, pdfResource.getFilename(),
+								startPageNumber, pageNumber));
 					}
 					pageTextGroupList.clear();
 
@@ -138,8 +133,8 @@ public class PagePdfDocumentReader implements DocumentReader {
 				pdfTextStripper.removeRegion(PDF_PAGE_REGION);
 			}
 			if (!CollectionUtils.isEmpty(pageTextGroupList)) {
-				readDocuments.add(toDocument(pageTextGroupList.stream().collect(Collectors.joining()), startPageNumber,
-						pageNumber));
+				readDocuments.add(toDocument(pageTextGroupList.stream().collect(Collectors.joining()),
+						pdfResource.getFilename(), startPageNumber, pageNumber));
 			}
 
 			return readDocuments;
@@ -150,14 +145,14 @@ public class PagePdfDocumentReader implements DocumentReader {
 		}
 	}
 
-	private Document toDocument(String docText, int startPageNumber, int endPageNumber) {
+	private Document toDocument(String docText, String resourceFileName, int startPageNumber, int endPageNumber) {
 
 		Document doc = new Document(docText);
 		doc.getMetadata().put(METADATA_START_PAGE_NUMBER, startPageNumber);
 		if (startPageNumber != endPageNumber) {
 			doc.getMetadata().put(METADATA_END_PAGE_NUMBER, endPageNumber);
 		}
-		doc.getMetadata().put(METADATA_FILE_NAME, this.resourceFileName);
+		doc.getMetadata().put(METADATA_FILE_NAME, resourceFileName);
 
 		return doc;
 	}

@@ -17,7 +17,6 @@
 package org.springframework.ai.reader.pdf;
 
 import java.awt.Rectangle;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -46,7 +45,7 @@ import org.springframework.util.StringUtils;
  *
  * @author Christian Tzolov
  */
-public class ParagraphPdfDocumentReader implements DocumentReader {
+public class ParagraphPdfDocumentReader implements DocumentReader<String> {
 
 	// Constants for metadata keys
 	private static final String METADATA_START_PAGE = "page_number";
@@ -59,60 +58,36 @@ public class ParagraphPdfDocumentReader implements DocumentReader {
 
 	private static final String METADATA_FILE_NAME = "file_name";
 
-	private final ParagraphManager paragraphTextExtractor;
-
-	private final PDDocument document;
-
 	private PdfDocumentReaderConfig config;
-
-	private File resourceFileName;
-
-	/**
-	 * Constructs a ParagraphPdfDocumentReader using a resource URL.
-	 * @param resourceUrl The URL of the PDF resource.
-	 */
-	public ParagraphPdfDocumentReader(String resourceUrl) {
-		this(new DefaultResourceLoader().getResource(resourceUrl));
-	}
 
 	/**
 	 * Constructs a ParagraphPdfDocumentReader using a resource.
-	 * @param pdfResource The PDF resource.
 	 */
-	public ParagraphPdfDocumentReader(Resource pdfResource) {
-		this(pdfResource, PdfDocumentReaderConfig.defaultConfig());
-	}
-
-	/**
-	 * Constructs a ParagraphPdfDocumentReader using a resource URL and a configuration.
-	 * @param resourceUrl The URL of the PDF resource.
-	 * @param config The configuration for PDF document processing.
-	 */
-	public ParagraphPdfDocumentReader(String resourceUrl, PdfDocumentReaderConfig config) {
-		this(new DefaultResourceLoader().getResource(resourceUrl), config);
+	public ParagraphPdfDocumentReader() {
+		this(PdfDocumentReaderConfig.defaultConfig());
 	}
 
 	/**
 	 * Constructs a ParagraphPdfDocumentReader using a resource and a configuration.
-	 * @param pdfResource The PDF resource.
 	 * @param config The configuration for PDF document processing.
 	 */
-	public ParagraphPdfDocumentReader(Resource pdfResource, PdfDocumentReaderConfig config) {
+	public ParagraphPdfDocumentReader(PdfDocumentReaderConfig config) {
+		this.config = config;
+	}
 
+	private PDDocument parsePdf(Resource pdfResource) {
 		try {
 			PDFParser pdfParser = new PDFParser(
 					new org.apache.pdfbox.io.RandomAccessReadBuffer(pdfResource.getInputStream()));
-			this.document = pdfParser.parse();
-
-			this.config = config;
-
-			this.paragraphTextExtractor = new ParagraphManager(this.document);
-
-			this.resourceFileName = pdfResource.getFile();
+			return pdfParser.parse();
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+	private Resource toResource(String resourceUri) {
+		return new DefaultResourceLoader().getResource(resourceUri);
 	}
 
 	/**
@@ -120,9 +95,12 @@ public class ParagraphPdfDocumentReader implements DocumentReader {
 	 * @return A list of {@link Document} objects representing paragraphs.
 	 */
 	@Override
-	public List<Document> get() {
+	public List<Document> apply(String resourceUri) {
+		var pdfResource = toResource(resourceUri);
 
-		var paragraphs = this.paragraphTextExtractor.flatten();
+		PDDocument pdDocument = parsePdf(pdfResource);
+
+		var paragraphs = new ParagraphManager(pdDocument).flatten();
 
 		List<Document> documents = new ArrayList<>(paragraphs.size());
 
@@ -132,14 +110,14 @@ public class ParagraphPdfDocumentReader implements DocumentReader {
 			var current = itr.next();
 
 			if (!itr.hasNext()) {
-				documents.add(toDocument(current, current));
+				documents.add(toDocument(pdDocument, pdfResource.getFilename(), current, current));
 			}
 			else {
 				while (itr.hasNext()) {
 					var next = itr.next();
-					Document document = toDocument(current, next);
+					Document document = toDocument(pdDocument, pdfResource.getFilename(), current, next);
 					if (document != null && StringUtils.hasText(document.getContent())) {
-						documents.add(toDocument(current, next));
+						documents.add(toDocument(pdDocument, pdfResource.getFilename(), current, next));
 					}
 					current = next;
 				}
@@ -149,9 +127,9 @@ public class ParagraphPdfDocumentReader implements DocumentReader {
 		return documents;
 	}
 
-	private Document toDocument(Paragraph from, Paragraph to) {
+	private Document toDocument(PDDocument pdDocument, String fileName, Paragraph from, Paragraph to) {
 
-		String docText = this.getTextBetweenParagraphs(from, to);
+		String docText = this.getTextBetweenParagraphs(pdDocument, from, to);
 
 		if (!StringUtils.hasText(docText)) {
 			return null;
@@ -162,12 +140,12 @@ public class ParagraphPdfDocumentReader implements DocumentReader {
 		document.getMetadata().put(METADATA_START_PAGE, from.startPageNumber());
 		document.getMetadata().put(METADATA_END_PAGE, to.startPageNumber());
 		document.getMetadata().put(METADATA_LEVEL, from.level());
-		document.getMetadata().put(METADATA_FILE_NAME, this.resourceFileName);
+		document.getMetadata().put(METADATA_FILE_NAME, fileName);
 
 		return document;
 	}
 
-	public String getTextBetweenParagraphs(Paragraph fromParagraph, Paragraph toParagraph) {
+	public String getTextBetweenParagraphs(PDDocument document, Paragraph fromParagraph, Paragraph toParagraph) {
 
 		// Page started from index 0, while PDFBOx getPage return them from index 1.
 		int startPage = fromParagraph.startPageNumber() - 1;
@@ -182,7 +160,7 @@ public class ParagraphPdfDocumentReader implements DocumentReader {
 
 			for (int pageNumber = startPage; pageNumber <= endPage; pageNumber++) {
 
-				var page = this.document.getPage(pageNumber);
+				var page = document.getPage(pageNumber);
 
 				int fromPosition = fromParagraph.position();
 				int toPosition = toParagraph.position();
