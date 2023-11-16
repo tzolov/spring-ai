@@ -70,7 +70,7 @@ public class AzureVectorStore implements VectorStore, InitializingBean {
 
 	private static final String METADATA_FIELD_NAME = "metadata";
 
-	private static final String INDEX_NAME = "SpringAiAzureVectorStore";
+	private static final String INDEX_NAME = "spring_ai_azure_vector_store";
 
 	private static final String DISTANCE_METADATA_FIELD_NAME = "distance";
 
@@ -276,7 +276,7 @@ public class AzureVectorStore implements VectorStore, InitializingBean {
 							.setEfSearch(1000)
 							.setMetric(VectorSearchAlgorithmMetric.COSINE)))));
 
-		this.searchIndexClient.createOrUpdateIndex(searchIndex);
+		var index = this.searchIndexClient.createOrUpdateIndex(searchIndex);
 
 		this.searchClient = this.searchIndexClient.getSearchClient(this.indexName);
 	}

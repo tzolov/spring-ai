@@ -1,40 +1,37 @@
-# Azure Cognitive Search VectorStore
+# Azure AI Search VectorStore
 
-This README will walk you through setting up the `AzureVectorStore`` to store document embeddings and perform similarity searches using the Azure Cognitive Search Service.
+This README will walk you through setting up the `AzureVectorStore`` to store document embeddings and perform similarity searches using the Azure AI Search Service.
 
-[Azure Cognitive Search](https://azure.microsoft.com/en-us/products/ai-services/cognitive-search) is a versatile cloud hosted cloud information retrieval system that is part of Microsoft's larger AI platform.
+[Azure AI Search](https://azure.microsoft.com/en-us/products/ai-services/cognitive-search) is a versatile cloud hosted cloud information retrieval system that is part of Microsoft's larger AI platform.
 Among other features, it allows users to query information using vector based storage and retrieval.
 
 ## Prerequisites
 
 1. Azure Subscription: You will need an [Azure subscription](https://azure.microsoft.com/en-us/free/) to use any Azure service.
-2. (Optional) Azure OpenAI Service: Create an an Azure [OpenAI service](https://portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI).
+2. Azure AI Search Service: Create an [AI Search service](https://portal.azure.com/#create/Microsoft.Search).  Once the service is created,
+obtain the admin apiKey from the `Keys` section under `Settings` and retrieve the endpoint from the `Url` field under the `Overview` section.
+3. (Optional) Azure OpenAI Service: Create an an Azure [OpenAI service](https://portal.azure.com/#create/Microsoft.AIServicesOpenAI).
 **NOTE:** You may have to fill out a separate form to gain access to Azure Open AI services.
 Once the service is created, obtain the endpoint and apiKey from the `Keys and Endpoint` section under `Resource Management`
-3. Azure Cognitive Search Service: Create an an Cognitive [Search service](https://portal.azure.com/#create/Microsoft.Search).  Once the service is created,
-obtain the admin apiKey from the `Keys` section under `Settings` and retrieve the endpoint from the `Url` field under the `Overview` section.
 
 ## Configuration
 
-On startup the `AzureVectorStore` will attempt to create a new index within your Cognitive Search service instance.
+On startup the `AzureVectorStore` will attempt to create a new index within your AI Search service instance.
 Alternatively you create the index, manually as explained in [Appendix A](appendix_a).
 
 To set up an AzureVectorStore, you will need the settings retrieved from the prerequisites above along with your index name:
 
-* (optionally) Azure OpenAI API Endpoint
-* (optionally) Azure OpenAI API Key
-* Azure Cognitive Search Endpoint
-* Azure Cognitive Search Key
-* Azure Cognitive Index Name
+* Azure AI Search Endpoint
+* Azure AI Search Key
+* (optional) Azure OpenAI API Endpoint
+* (optional) Azure OpenAI API Key
 
 You can provide these values as OS environment variables.
 
 ```bash
-export 'SPRING_AI_AZURE_OPENAI_API_KEY=<My Azure AI API Key>'
-export 'SPRING_AI_AZURE_OPENAI_ENDPOINT=<My Azure AI Endpoint>'
-export 'SPRING_AI_AZURE_COGNITIVE_SEARCH_API_KEY=<My Cognitive Search API Key>'
-export 'SPRING_AI_AZURE_COGNITIVE_SEARCH_ENDPOINT=<My Cognitive Search Index>'
-export 'SPRING_AI_AZURE_COGNITIVE_SEARCH_INDEX=<My Cognitive Search Index>'
+export 'AZURE_AI_SEARCH_API_KEY=<My AI Search API Key>'
+export 'AZURE_AI_SEARCH_ENDPOINT=<My AI Search Index>'
+export 'OPENAI_API_KEY=<My Azure AI API Key>' (Optional)
 ```
 
 **NOTE** You can replace Azure Open AI implementation with any valid OpenAI implementation that supports the Embeddings interface.  For example, you could use Spring AIs Open AI or TransformersEmbedding implementations for embeddings instead of the Azure implementation.
@@ -44,10 +41,7 @@ export 'SPRING_AI_AZURE_COGNITIVE_SEARCH_INDEX=<My Cognitive Search Index>'
 Add these dependencies to your project:
 
 1. Select an Embeddings interface implementation.
-
-**(Optional) Embedding implementation**
-
-For example:
+You can choose between:
 
 * OpenAI Embedding:
 
@@ -79,15 +73,15 @@ For example:
    </dependency>
    ```
 
-2. Azure (Cognitive Search) Vector Store
+2. Azure (AI Search) Vector Store
 
-```xml
-<dependency>
-    <groupId>org.springframework.experimental.ai</groupId>
-    <artifactId>spring-ai-azure-vector-store</artifactId>
-    <version>0.7.1-SNAPSHOT</version>
-</dependency>
-```
+    ```xml
+    <dependency>
+        <groupId>org.springframework.experimental.ai</groupId>
+        <artifactId>spring-ai-azure-vector-store</artifactId>
+        <version>0.7.1-SNAPSHOT</version>
+    </dependency>
+    ```
 
 ## Sample Code
 
@@ -96,8 +90,8 @@ To configure an Azure `SearchIndexClient` in your application, you can use the f
 ```java
 @Bean
 public SearchIndexClient searchIndexClient() {
-  return new SearchIndexClientBuilder().endpoint(System.getenv("SPRING_AI_AZURE_COGNITIVE_SEARCH_ENDPOINT"))
-    .credential(new AzureKeyCredential(System.getenv("SPRING_AI_AZURE_COGNITIVE_SEARCH_API_KEY")))
+  return new SearchIndexClientBuilder().endpoint(System.getenv("AZURE_AI_SEARCH_ENDPOINT"))
+    .credential(new AzureKeyCredential(System.getenv("AZURE_AI_SEARCH_API_KEY")))
     .buildClient();
 }
 ```
@@ -108,7 +102,7 @@ To create a vector store, you can use the following code by injecting the `Searc
 ```java
 @Bean
 public VectorStore vectorStore(SearchIndexClient searchIndexClient, EmbeddingClient embeddingClient) {
-  return new AzureCognitiveSearchVectorStore(searchIndexClient, embeddingClient);
+  return new AzureVectorStore(searchIndexClient, embeddingClient);
 }
 ```
 
