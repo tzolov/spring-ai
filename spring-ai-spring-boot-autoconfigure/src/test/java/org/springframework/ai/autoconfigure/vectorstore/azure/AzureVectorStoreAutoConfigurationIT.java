@@ -81,40 +81,47 @@ public class AzureVectorStoreAutoConfigurationIT {
 	@Test
 	public void addAndSearchTest() {
 
-		contextRunner.run(context -> {
+		contextRunner
+			.withPropertyValues("spring.ai.vectorstore.azure.indexName=my_test_index",
+					"spring.ai.vectorstore.azure.defaultTopK=6",
+					"spring.ai.vectorstore.azure.defaultSimilarityThreshold=0.75")
+			.run(context -> {
 
-			var properties = context.getBean(AzureVectorStoreProperties.class);
+				var properties = context.getBean(AzureVectorStoreProperties.class);
 
-			assertThat(properties.getUrl()).isEqualTo(System.getenv("AZURE_AI_SEARCH_ENDPOINT"));
-			assertThat(properties.getApiKey()).isEqualTo(System.getenv("AZURE_AI_SEARCH_API_KEY"));
+				assertThat(properties.getUrl()).isEqualTo(System.getenv("AZURE_AI_SEARCH_ENDPOINT"));
+				assertThat(properties.getApiKey()).isEqualTo(System.getenv("AZURE_AI_SEARCH_API_KEY"));
+				assertThat(properties.getDefaultTopK()).isEqualTo(6);
+				assertThat(properties.getDefaultSimilarityThreshold()).isEqualTo(0.75);
+				assertThat(properties.getIndexName()).isEqualTo("my_test_index");
 
-			VectorStore vectorStore = context.getBean(VectorStore.class);
+				VectorStore vectorStore = context.getBean(VectorStore.class);
 
-			assertThat(vectorStore).isInstanceOf(AzureVectorStore.class);
+				assertThat(vectorStore).isInstanceOf(AzureVectorStore.class);
 
-			vectorStore.add(documents);
+				vectorStore.add(documents);
 
-			Awaitility.await().until(() -> {
-				return vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(1));
-			}, hasSize(1));
+				Awaitility.await().until(() -> {
+					return vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(1));
+				}, hasSize(1));
 
-			List<Document> results = vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(1));
+				List<Document> results = vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(1));
 
-			assertThat(results).hasSize(1);
-			Document resultDoc = results.get(0);
-			assertThat(resultDoc.getId()).isEqualTo(documents.get(0).getId());
-			assertThat(resultDoc.getContent()).contains(
-					"Spring AI provides abstractions that serve as the foundation for developing AI applications.");
-			assertThat(resultDoc.getMetadata()).hasSize(2);
-			assertThat(resultDoc.getMetadata()).containsKeys("spring", "distance");
+				assertThat(results).hasSize(1);
+				Document resultDoc = results.get(0);
+				assertThat(resultDoc.getId()).isEqualTo(documents.get(0).getId());
+				assertThat(resultDoc.getContent()).contains(
+						"Spring AI provides abstractions that serve as the foundation for developing AI applications.");
+				assertThat(resultDoc.getMetadata()).hasSize(2);
+				assertThat(resultDoc.getMetadata()).containsKeys("spring", "distance");
 
-			// Remove all documents from the store
-			vectorStore.delete(documents.stream().map(doc -> doc.getId()).toList());
+				// Remove all documents from the store
+				vectorStore.delete(documents.stream().map(doc -> doc.getId()).toList());
 
-			Awaitility.await().until(() -> {
-				return vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(1));
-			}, hasSize(0));
-		});
+				Awaitility.await().until(() -> {
+					return vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(1));
+				}, hasSize(0));
+			});
 	}
 
 	@Configuration(proxyBeanMethods = false)

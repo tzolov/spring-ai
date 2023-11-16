@@ -16,6 +16,7 @@
 
 package org.springframework.ai.autoconfigure.vectorstore.azure;
 
+import org.springframework.ai.vectorstore.AzureVectorStore;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -29,6 +30,12 @@ public class AzureVectorStoreProperties {
 	private String url;
 
 	private String apiKey;
+
+	private String indexName = AzureVectorStore.DEFAULT_INDEX_NAME;
+
+	private int defaultTopK = -1;
+
+	private double defaultSimilarityThreshold = -1;
 
 	public String getUrl() {
 		return url;
@@ -44,6 +51,30 @@ public class AzureVectorStoreProperties {
 
 	public void setApiKey(String apiKey) {
 		this.apiKey = apiKey;
+	}
+
+	public String getIndexName() {
+		return indexName;
+	}
+
+	public void setIndexName(String indexName) {
+		this.indexName = indexName;
+	}
+
+	public int getDefaultTopK() {
+		return defaultTopK;
+	}
+
+	public void setDefaultTopK(int defaultTopK) {
+		this.defaultTopK = defaultTopK;
+	}
+
+	public double getDefaultSimilarityThreshold() {
+		return defaultSimilarityThreshold;
+	}
+
+	public void setDefaultSimilarityThreshold(double defaultSimilarityThreshold) {
+		this.defaultSimilarityThreshold = defaultSimilarityThreshold;
 	}
 
 }

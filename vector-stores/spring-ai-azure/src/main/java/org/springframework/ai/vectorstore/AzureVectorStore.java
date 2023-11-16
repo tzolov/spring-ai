@@ -62,6 +62,8 @@ import org.springframework.util.StringUtils;
  */
 public class AzureVectorStore implements VectorStore, InitializingBean {
 
+	public static final String DEFAULT_INDEX_NAME = "spring_ai_azure_vector_store";
+
 	private static final String ID_FIELD_NAME = "id";
 
 	private static final String CONTENT_FIELD_NAME = "content";
@@ -69,8 +71,6 @@ public class AzureVectorStore implements VectorStore, InitializingBean {
 	private static final String EMBEDDING_FIELD_NAME = "embedding";
 
 	private static final String METADATA_FIELD_NAME = "metadata";
-
-	private static final String INDEX_NAME = "spring_ai_azure_vector_store";
 
 	private static final String DISTANCE_METADATA_FIELD_NAME = "distance";
 
@@ -88,7 +88,7 @@ public class AzureVectorStore implements VectorStore, InitializingBean {
 
 	private Double defaultSimilarityThreshold = DEFAULT_SIMILARITY_THRESHOLD;
 
-	private String indexName = INDEX_NAME;
+	private String indexName = DEFAULT_INDEX_NAME;
 
 	/**
 	 * Constructs a new AzureCognitiveSearchVectorStore.

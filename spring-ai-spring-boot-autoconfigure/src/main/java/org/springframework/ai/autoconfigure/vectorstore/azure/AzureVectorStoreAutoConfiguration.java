@@ -36,7 +36,7 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 @ConditionalOnClass({ EmbeddingClient.class, SearchIndexClient.class })
 @EnableConfigurationProperties({ AzureVectorStoreProperties.class })
-@ConditionalOnProperty(prefix = "spring.ai.vectorstore.azure", value = { "url", "api-key" })
+@ConditionalOnProperty(prefix = "spring.ai.vectorstore.azure", value = { "url", "api-key", "index-name" })
 public class AzureVectorStoreAutoConfiguration {
 
 	@Bean
@@ -49,8 +49,22 @@ public class AzureVectorStoreAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	public VectorStore vectorStore(SearchIndexClient searchIndexClient, EmbeddingClient embeddingClient) {
-		return new AzureVectorStore(searchIndexClient, embeddingClient);
+	public VectorStore vectorStore(SearchIndexClient searchIndexClient, EmbeddingClient embeddingClient,
+			AzureVectorStoreProperties properties) {
+
+		var vectorStore = new AzureVectorStore(searchIndexClient, embeddingClient);
+
+		vectorStore.setIndexName(properties.getIndexName());
+
+		if (properties.getDefaultTopK() >= 0) {
+			vectorStore.setDefaultTopK(properties.getDefaultTopK());
+		}
+
+		if (properties.getDefaultSimilarityThreshold() >= 0.0) {
+			vectorStore.setDefaultSimilarityThreshold(properties.getDefaultSimilarityThreshold());
+		}
+
+		return vectorStore;
 	}
 
 }
