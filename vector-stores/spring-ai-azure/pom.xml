@@ -10,8 +10,8 @@
 	</parent>
 	<artifactId>spring-ai-azure-vector-store</artifactId>
 	<packaging>jar</packaging>
-	<name>Spring AI Cognitive Search Vector Store</name>
-	<description>Spring AI Cognitive Search Vector Store</description>
+	<name>Spring AI - Azure AI Search Vector Store</name>
+	<description>Spring AI - Azure AI Search Vector Store</description>
 	<url>https://github.com/spring-projects-experimental/spring-ai</url>
 	<properties>
 		<azure-search.version>11.6.0</azure-search.version>

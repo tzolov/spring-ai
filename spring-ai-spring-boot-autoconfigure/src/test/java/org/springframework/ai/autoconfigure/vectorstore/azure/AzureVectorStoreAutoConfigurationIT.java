@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.autoconfigure.vectorstore.pinecone;
+package org.springframework.ai.autoconfigure.vectorstore.azure;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.awaitility.Awaitility;
-import java.time.Duration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -31,6 +31,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingClient;
 import org.springframework.ai.embedding.TransformersEmbeddingClient;
+import org.springframework.ai.vectorstore.AzureVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -45,8 +46,9 @@ import static org.hamcrest.Matchers.hasSize;
 /**
  * @author Christian Tzolov
  */
-@EnabledIfEnvironmentVariable(named = "PINECONE_API_KEY", matches = ".+")
-public class PineconeVectorStoreAutoConfigurationIT {
+@EnabledIfEnvironmentVariable(named = "AZURE_AI_SEARCH_API_KEY", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "AZURE_AI_SEARCH_ENDPOINT", matches = ".+")
+public class AzureVectorStoreAutoConfigurationIT {
 
 	List<Document> documents = List.of(
 			new Document("1", getText("classpath:/test/data/spring.ai.txt"), Map.of("spring", "great")),
@@ -64,12 +66,10 @@ public class PineconeVectorStoreAutoConfigurationIT {
 	}
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-		.withConfiguration(AutoConfigurations.of(PineconeVectorStoreAutoConfiguration.class))
+		.withConfiguration(AutoConfigurations.of(AzureVectorStoreAutoConfiguration.class))
 		.withUserConfiguration(Config.class)
-		.withPropertyValues("spring.ai.vectorstore.pinecone.apiKey=" + System.getenv("PINECONE_API_KEY"),
-				"spring.ai.vectorstore.pinecone.environment=gcp-starter",
-				"spring.ai.vectorstore.pinecone.projectId=814621f",
-				"spring.ai.vectorstore.pinecone.indexName=spring-ai-test-index");
+		.withPropertyValues("spring.ai.vectorstore.azure.apiKey=" + System.getenv("AZURE_AI_SEARCH_API_KEY"),
+				"spring.ai.vectorstore.azure.url=" + System.getenv("AZURE_AI_SEARCH_ENDPOINT"));
 
 	@BeforeAll
 	public static void beforeAll() {
@@ -83,7 +83,14 @@ public class PineconeVectorStoreAutoConfigurationIT {
 
 		contextRunner.run(context -> {
 
+			var properties = context.getBean(AzureVectorStoreProperties.class);
+
+			assertThat(properties.getUrl()).isEqualTo(System.getenv("AZURE_AI_SEARCH_ENDPOINT"));
+			assertThat(properties.getApiKey()).isEqualTo(System.getenv("AZURE_AI_SEARCH_API_KEY"));
+
 			VectorStore vectorStore = context.getBean(VectorStore.class);
+
+			assertThat(vectorStore).isInstanceOf(AzureVectorStore.class);
 
 			vectorStore.add(documents);
 

@@ -59,7 +59,7 @@ public class AzureVectorStoreIT {
 			new Document("3", getText("classpath:/test/data/great.depression.txt"), Map.of("meta2", "meta2")));
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withUserConfiguration(Config.class);
+		.withUserConfiguration(Config.class);
 
 	@BeforeAll
 	public static void beforeAll() {
@@ -168,11 +168,11 @@ public class AzureVectorStoreIT {
 
 			Awaitility.await().until(() -> {
 				return vectorStore
-						.similaritySearch(SearchRequest.query("Depression").withTopK(50).withSimilarityThresholdAll());
+					.similaritySearch(SearchRequest.query("Depression").withTopK(50).withSimilarityThresholdAll());
 			}, hasSize(3));
 
 			List<Document> fullResult = vectorStore
-					.similaritySearch(SearchRequest.query("Depression").withTopK(5).withSimilarityThresholdAll());
+				.similaritySearch(SearchRequest.query("Depression").withTopK(5).withSimilarityThresholdAll());
 
 			List<Float> distances = fullResult.stream().map(doc -> (Float) doc.getMetadata().get("distance")).toList();
 
@@ -181,8 +181,7 @@ public class AzureVectorStoreIT {
 			float threshold = (distances.get(0) + distances.get(1)) / 2;
 
 			List<Document> results = vectorStore
-					.similaritySearch(
-							SearchRequest.query("Depression").withTopK(5).withSimilarityThreshold(1 - threshold));
+				.similaritySearch(SearchRequest.query("Depression").withTopK(5).withSimilarityThreshold(1 - threshold));
 
 			assertThat(results).hasSize(1);
 			Document resultDoc = results.get(0);
@@ -206,8 +205,8 @@ public class AzureVectorStoreIT {
 		@Bean
 		public SearchIndexClient searchIndexClient() {
 			return new SearchIndexClientBuilder().endpoint(System.getenv("AZURE_AI_SEARCH_ENDPOINT"))
-					.credential(new AzureKeyCredential(System.getenv("AZURE_AI_SEARCH_API_KEY")))
-					.buildClient();
+				.credential(new AzureKeyCredential(System.getenv("AZURE_AI_SEARCH_API_KEY")))
+				.buildClient();
 		}
 
 		@Bean
