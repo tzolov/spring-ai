@@ -13,16 +13,18 @@
 	<name>Spring AI - Azure AI Search Vector Store</name>
 	<description>Spring AI - Azure AI Search Vector Store</description>
 	<url>https://github.com/spring-projects-experimental/spring-ai</url>
-	<properties>
-		<azure-search.version>11.6.0</azure-search.version>
-		<maven.compiler.target>17</maven.compiler.target>
-		<maven.compiler.source>17</maven.compiler.source>
-	</properties>
+
 	<scm>
 		<url>https://github.com/spring-projects-experimental/spring-ai</url>
 		<connection>git://github.com/spring-projects-experimental/spring-ai.git</connection>
 		<developerConnection>git@github.com:spring-projects-experimental/spring-ai.git</developerConnection>
 	</scm>
+
+	<properties>
+		<maven.compiler.target>17</maven.compiler.target>
+		<maven.compiler.source>17</maven.compiler.source>
+	</properties>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.experimental.ai</groupId>
@@ -42,8 +44,8 @@
 			</exclusions>
 		</dependency>
 		<dependency>
-			<groupId>com.alibaba</groupId>
-			<artifactId>fastjson</artifactId>
+			<groupId>com.alibaba.fastjson2</groupId>
+			<artifactId>fastjson2</artifactId>
 			<version>${fastjson.version}</version>
 		</dependency>
 
