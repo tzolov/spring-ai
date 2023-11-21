@@ -3,7 +3,11 @@ package org.springframework.ai.openai.client;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import com.theokanning.openai.completion.chat.ChatCompletionChoice;
+import com.theokanning.openai.completion.chat.ChatCompletionChunk;
+import com.theokanning.openai.completion.chat.ChatMessage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
@@ -120,6 +124,29 @@ class OpenAiClientIT extends AbstractIT {
 		Generation generation = openAiClient.generate(prompt).getGeneration();
 
 		ActorsFilmsRecord actorsFilms = outputParser.parse(generation.getText());
+		assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
+		assertThat(actorsFilms.movies()).hasSize(5);
+	}
+
+	@Test
+	void beanStreamOutputParserRecords() {
+
+		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
+
+		String format = outputParser.getFormat();
+		String template = """
+                Generate the filmography of 5 movies for Tom Hanks.
+                {format}
+                """;
+		PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
+		String generationTextFromStream = openAiStreamClient.generateStream(prompt).toList().blockingGet().stream()
+				.map(ChatCompletionChunk::getChoices).flatMap(List::stream)
+				.map(ChatCompletionChoice::getMessage).map(ChatMessage::getContent)
+				.collect(Collectors.joining());
+
+		ActorsFilmsRecord actorsFilms = outputParser.parse(generationTextFromStream);
+		System.out.println(actorsFilms);
 		assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
 		assertThat(actorsFilms.movies()).hasSize(5);
 	}
