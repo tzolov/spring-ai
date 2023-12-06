@@ -7,37 +7,25 @@ import java.util.Map;
 
 public record ChatCompletionResponse(
 
-        @JsonProperty("id")
-        String id,
+		@JsonProperty("id") String id,
 
-        @JsonProperty("choices")
-        List<Choice> choices,
+		@JsonProperty("choices") List<Choice> choices,
 
-        @JsonProperty("created")
-        Integer created,
+		@JsonProperty("created") Integer created,
 
-        @JsonProperty("model")
-        String model,
+		@JsonProperty("model") String model,
 
-        @JsonProperty("system_fingerprint")
-        String systemFingerprint,
+		@JsonProperty("system_fingerprint") String systemFingerprint,
 
-        @JsonProperty("object")
-        String object,
+		@JsonProperty("object") String object,
 
-        @JsonProperty("usage")
-        Map<String, Object> usage
-) {
-        public record Choice(
+		@JsonProperty("usage") Map<String, Object> usage) {
+	public record Choice(
 
-                @JsonProperty("finish_reason")
-                String finishReason,
+			@JsonProperty("finish_reason") String finishReason,
 
-                @JsonProperty("index")
-                Integer index,
+			@JsonProperty("index") Integer index,
 
-                @JsonProperty("message")
-                OpenAiChatMessage message
-        ) {
-        }
+			@JsonProperty("message") OpenAiChatMessage message) {
+	}
 }

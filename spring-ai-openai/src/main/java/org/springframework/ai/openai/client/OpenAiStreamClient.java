@@ -16,7 +16,6 @@
 
 package org.springframework.ai.openai.client;
 
-
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -41,86 +40,106 @@ import java.util.stream.Collectors;
 
 public class OpenAiStreamClient implements AiStreamClient {
 
-    private Double temperature = 0.7;
+	private Double temperature = 0.7;
 
-    private String model = "gpt-3.5-turbo";
+	private String model = "gpt-3.5-turbo";
 
-    private final Logger logger = LoggerFactory.getLogger(getClass());
+	private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private final WebClient webClient;
-    private final ObjectMapper objectMapper;
+	private final WebClient webClient;
 
-    private final ParameterizedTypeReference<ServerSentEvent<String>> sseType;
+	private final ObjectMapper objectMapper;
 
-    public OpenAiStreamClient(String openAiApiToken) {
-        this("https://api.openai.com/", openAiApiToken);
-    }
+	private final ParameterizedTypeReference<ServerSentEvent<String>> sseType;
 
-    public OpenAiStreamClient(String openAiEndpoint, String openAiApiToken) {
-        this.webClient = WebClient.builder().baseUrl(openAiEndpoint)
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + openAiApiToken).build();
-        this.objectMapper = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL)
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                .configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
-        this.sseType = new ParameterizedTypeReference<>() {};
-    }
+	public OpenAiStreamClient(String openAiApiToken) {
+		this("https://api.openai.com/", openAiApiToken);
+	}
 
-    @Override
-    public AiResponse generate(Prompt prompt) {
-        List<OpenAiChatMessage> openAiChatMessages = prompt.getMessages().stream()
-                .map(message -> new OpenAiChatMessage.Builder().role(message.getMessageTypeValue()).content(
-                        message.getContent()).build()).toList();
+	public OpenAiStreamClient(String openAiEndpoint, String openAiApiToken) {
+		this.webClient = WebClient.builder()
+			.baseUrl(openAiEndpoint)
+			.defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+			.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + openAiApiToken)
+			.build();
+		this.objectMapper = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL)
+			.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+			.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+		this.sseType = new ParameterizedTypeReference<>() {
+		};
+	}
 
-        ChatCompletionsRequest chatCompletionsRequest =
-                new ChatCompletionsRequest.Builder().stream(false).model(this.model).temperature(this.temperature)
-                        .messages(openAiChatMessages).build();
+	@Override
+	public AiResponse generate(Prompt prompt) {
+		List<OpenAiChatMessage> openAiChatMessages = prompt.getMessages()
+			.stream()
+			.map(message -> new OpenAiChatMessage.Builder().role(message.getMessageTypeValue())
+				.content(message.getContent())
+				.build())
+			.toList();
 
-        return getAiResponse(chatCompletionsRequest);
-    }
+		ChatCompletionsRequest chatCompletionsRequest = new ChatCompletionsRequest.Builder().stream(false)
+			.model(this.model)
+			.temperature(this.temperature)
+			.messages(openAiChatMessages)
+			.build();
 
-    private AiResponse getAiResponse(ChatCompletionsRequest chatCompletionsRequest) {
+		return getAiResponse(chatCompletionsRequest);
+	}
 
-        logger.trace("ChatMessages: {}", chatCompletionsRequest.getMessages());
+	private AiResponse getAiResponse(ChatCompletionsRequest chatCompletionsRequest) {
 
-        List<ChatCompletionResponse.Choice> chatCompletionChoices =
-                createChatCompletion(chatCompletionsRequest).bodyToMono(ChatCompletionResponse.class)
-                        .map(ChatCompletionResponse::choices).block();
+		logger.trace("ChatMessages: {}", chatCompletionsRequest.getMessages());
 
-        logger.trace("ChatCompletionChoice: {}", chatCompletionChoices);
+		List<ChatCompletionResponse.Choice> chatCompletionChoices = createChatCompletion(chatCompletionsRequest)
+			.bodyToMono(ChatCompletionResponse.class)
+			.map(ChatCompletionResponse::choices)
+			.block();
 
-        return new AiResponse(chatCompletionChoices.stream().map(ChatCompletionResponse.Choice::message)
-                .map(chatMessage -> new Generation(chatMessage.getContent(), Map.of("role", chatMessage.getRole())))
-                .collect(Collectors.toList()));
-    }
+		logger.trace("ChatCompletionChoice: {}", chatCompletionChoices);
 
-    private WebClient.ResponseSpec createChatCompletion(ChatCompletionsRequest chatCompletionsRequest) {
-        return this.webClient.post().uri("/v1/chat/completions")
-                .bodyValue(objectMapper.convertValue(chatCompletionsRequest, JsonNode.class)).retrieve();
-    }
+		return new AiResponse(chatCompletionChoices.stream()
+			.map(ChatCompletionResponse.Choice::message)
+			.map(chatMessage -> new Generation(chatMessage.getContent(), Map.of("role", chatMessage.getRole())))
+			.collect(Collectors.toList()));
+	}
 
-    @Override
-    public Flux<OpenAiSseResponse> generateStream(Prompt prompt) {
+	private WebClient.ResponseSpec createChatCompletion(ChatCompletionsRequest chatCompletionsRequest) {
+		return this.webClient.post()
+			.uri("/v1/chat/completions")
+			.bodyValue(objectMapper.convertValue(chatCompletionsRequest, JsonNode.class))
+			.retrieve();
+	}
 
-        List<OpenAiChatMessage> openAiChatMessages = prompt.getMessages().stream()
-                .map(message -> new OpenAiChatMessage.Builder().role(message.getMessageTypeValue()).content(
-                        message.getContent()).build()).toList();
+	@Override
+	public Flux<OpenAiSseResponse> generateStream(Prompt prompt) {
 
-        ChatCompletionsRequest chatCompletionsRequest =
-                new ChatCompletionsRequest.Builder().stream(true).model(this.model).temperature(this.temperature)
-                        .messages(openAiChatMessages).build();
+		List<OpenAiChatMessage> openAiChatMessages = prompt.getMessages()
+			.stream()
+			.map(message -> new OpenAiChatMessage.Builder().role(message.getMessageTypeValue())
+				.content(message.getContent())
+				.build())
+			.toList();
 
-        logger.trace("ChatMessages: {}", chatCompletionsRequest.getMessages());
+		ChatCompletionsRequest chatCompletionsRequest = new ChatCompletionsRequest.Builder().stream(true)
+			.model(this.model)
+			.temperature(this.temperature)
+			.messages(openAiChatMessages)
+			.build();
 
-        return createChatCompletion(chatCompletionsRequest).bodyToFlux(sseType).map(ServerSentEvent::data)
-                .filter(Predicate.not("[DONE]"::equals))
-                .handle((data, sink) -> {
-                    try {
-                        sink.next(objectMapper.readValue(data, OpenAiSseResponse.class));
-                    } catch (JsonProcessingException e) {
-                        sink.error(new RuntimeException(e));
-                    }
-                });
-    }
+		logger.trace("ChatMessages: {}", chatCompletionsRequest.getMessages());
+
+		return createChatCompletion(chatCompletionsRequest).bodyToFlux(sseType)
+			.map(ServerSentEvent::data)
+			.filter(Predicate.not("[DONE]"::equals))
+			.handle((data, sink) -> {
+				try {
+					sink.next(objectMapper.readValue(data, OpenAiSseResponse.class));
+				}
+				catch (JsonProcessingException e) {
+					sink.error(new RuntimeException(e));
+				}
+			});
+	}
 
 }

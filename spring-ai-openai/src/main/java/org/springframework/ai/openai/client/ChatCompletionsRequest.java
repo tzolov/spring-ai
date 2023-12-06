@@ -97,183 +97,175 @@ public class ChatCompletionsRequest {
         return topP;
     }
 
-    public List<Tool> getTools() {
-        return tools;
-    }
+	public List<Tool> getTools() {
+		return tools;
+	}
 
-    public String getToolChoice() {
-        return toolChoice;
-    }
+	public String getToolChoice() {
+		return toolChoice;
+	}
 
-    public String getUser() {
-        return user;
-    }
+	public String getUser() {
+		return user;
+	}
 
-    public static class Builder {
+	public static class Builder {
 
-        @JsonProperty("messages")
-        private List<OpenAiChatMessage> messages;
+		@JsonProperty("messages")
+		private List<OpenAiChatMessage> messages;
 
-        @JsonProperty("model")
-        private String model;
+		@JsonProperty("model")
+		private String model;
 
-        @JsonProperty("frequency_penalty")
-        private Integer frequencyPenalty;
+		@JsonProperty("frequency_penalty")
+		private Integer frequencyPenalty;
 
-        @JsonProperty("logit_bias")
-        private Map<String, String> logitBias;
+		@JsonProperty("logit_bias")
+		private Map<String, String> logitBias;
 
-        @JsonProperty("max_tokens")
-        private Integer maxTokens;
+		@JsonProperty("max_tokens")
+		private Integer maxTokens;
 
-        @JsonProperty("n")
-        private Integer n;
+		@JsonProperty("n")
+		private Integer n;
 
-        @JsonProperty("presence_penalty")
-        private Integer presencePenalty;
+		@JsonProperty("presence_penalty")
+		private Integer presencePenalty;
 
-        @JsonProperty("response_format")
-        private ResponseFormat responseFormat;
+		@JsonProperty("response_format")
+		private ResponseFormat responseFormat;
 
-        @JsonProperty("seed")
-        private Integer seed;
+		@JsonProperty("seed")
+		private Integer seed;
 
-        @JsonProperty("stop")
-        private List<String> stop;
+		@JsonProperty("stop")
+		private List<String> stop;
 
-        @JsonProperty("stream")
-        private Boolean stream;
+		@JsonProperty("stream")
+		private Boolean stream;
 
-        @JsonProperty("temperature")
-        private Double temperature;
+		@JsonProperty("temperature")
+		private Double temperature;
 
-        @JsonProperty("top_p")
-        private Integer topP;
+		@JsonProperty("top_p")
+		private Integer topP;
 
-        @JsonProperty("tools")
-        private List<Tool> tools;
+		@JsonProperty("tools")
+		private List<Tool> tools;
 
-        @JsonProperty("tool_choice")
-        private String toolChoice;
+		@JsonProperty("tool_choice")
+		private String toolChoice;
 
-        @JsonProperty("user")
-        private String user;
+		@JsonProperty("user")
+		private String user;
 
-        public Builder messages(List<OpenAiChatMessage> messages) {
-            this.messages = messages;
-            return this;
-        }
+		public Builder messages(List<OpenAiChatMessage> messages) {
+			this.messages = messages;
+			return this;
+		}
 
-        public Builder model(String model) {
-            this.model = model;
-            return this;
-        }
+		public Builder model(String model) {
+			this.model = model;
+			return this;
+		}
 
-        public Builder frequencyPenalty(Integer frequencyPenalty) {
-            this.frequencyPenalty = frequencyPenalty;
-            return this;
-        }
+		public Builder frequencyPenalty(Integer frequencyPenalty) {
+			this.frequencyPenalty = frequencyPenalty;
+			return this;
+		}
 
-        public Builder logitBias(Map<String, String> logitBias) {
-            this.logitBias = logitBias;
-            return this;
-        }
+		public Builder logitBias(Map<String, String> logitBias) {
+			this.logitBias = logitBias;
+			return this;
+		}
 
-        public Builder maxTokens(Integer maxTokens) {
-            this.maxTokens = maxTokens;
-            return this;
-        }
+		public Builder maxTokens(Integer maxTokens) {
+			this.maxTokens = maxTokens;
+			return this;
+		}
 
-        public Builder n(Integer n) {
-            this.n = n;
-            return this;
-        }
+		public Builder n(Integer n) {
+			this.n = n;
+			return this;
+		}
 
-        public Builder presencePenalty(Integer presencePenalty) {
-            this.presencePenalty = presencePenalty;
-            return this;
-        }
+		public Builder presencePenalty(Integer presencePenalty) {
+			this.presencePenalty = presencePenalty;
+			return this;
+		}
 
-        public Builder responseFormat(ResponseFormat responseFormat) {
-            this.responseFormat = responseFormat;
-            return this;
-        }
+		public Builder responseFormat(ResponseFormat responseFormat) {
+			this.responseFormat = responseFormat;
+			return this;
+		}
 
-        public Builder seed(Integer seed) {
-            this.seed = seed;
-            return this;
-        }
+		public Builder seed(Integer seed) {
+			this.seed = seed;
+			return this;
+		}
 
-        public Builder stop(List<String> stop) {
-            this.stop = stop;
-            return this;
-        }
+		public Builder stop(List<String> stop) {
+			this.stop = stop;
+			return this;
+		}
 
-        public Builder stream(Boolean stream) {
-            this.stream = stream;
-            return this;
-        }
+		public Builder stream(Boolean stream) {
+			this.stream = stream;
+			return this;
+		}
 
-        public Builder temperature(Double temperature) {
-            this.temperature = temperature;
-            return this;
-        }
+		public Builder temperature(Double temperature) {
+			this.temperature = temperature;
+			return this;
+		}
 
-        public Builder topP(Integer topP) {
-            this.topP = topP;
-            return this;
-        }
+		public Builder topP(Integer topP) {
+			this.topP = topP;
+			return this;
+		}
 
-        public Builder tools(List<Tool> tools) {
-            this.tools = tools;
-            return this;
-        }
+		public Builder tools(List<Tool> tools) {
+			this.tools = tools;
+			return this;
+		}
 
-        public Builder toolChoice(String toolChoice) {
-            this.toolChoice = toolChoice;
-            return this;
-        }
+		public Builder toolChoice(String toolChoice) {
+			this.toolChoice = toolChoice;
+			return this;
+		}
 
-        public Builder user(String user) {
-            this.user = user;
-            return this;
-        }
+		public Builder user(String user) {
+			this.user = user;
+			return this;
+		}
 
-        public ChatCompletionsRequest build() {
-            return new ChatCompletionsRequest(this);
-        }
-    }
+		public ChatCompletionsRequest build() {
+			return new ChatCompletionsRequest(this);
+		}
 
-    public record Function(
+	}
 
-            @JsonProperty("name")
-            String name,
+	public record Function(
 
-            @JsonProperty("description")
-            String description,
+			@JsonProperty("name") String name,
 
-            @JsonProperty("parameters")
-            Map<String, Object> parameters,
+			@JsonProperty("description") String description,
 
-            @JsonProperty("arguments")
-            String arguments
-    ) {
-    }
+			@JsonProperty("parameters") Map<String, Object> parameters,
 
-    public record ResponseFormat(
+			@JsonProperty("arguments") String arguments) {
+	}
 
-            @JsonProperty("type")
-            String type
-    ) {
-    }
+	public record ResponseFormat(
 
-    public record Tool(
+			@JsonProperty("type") String type) {
+	}
 
-            @JsonProperty("function")
-            Function function,
+	public record Tool(
 
-            @JsonProperty("type")
-            String type
-    ) {
-    }
+			@JsonProperty("function") Function function,
+
+			@JsonProperty("type") String type) {
+	}
+
 }

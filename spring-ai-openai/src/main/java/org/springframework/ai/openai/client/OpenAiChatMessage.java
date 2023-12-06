@@ -8,82 +8,84 @@ import java.util.List;
 @JsonDeserialize(builder = OpenAiChatMessage.Builder.class)
 public class OpenAiChatMessage {
 
-    private final String role;
-    private final String name;
-    private final List<ToolCall> toolCalls;
-    private final String content;
+	private final String role;
 
-    private OpenAiChatMessage(Builder builder) {
-        this.role = builder.role;
-        this.name = builder.name;
-        this.toolCalls = builder.toolCalls;
-        this.content = builder.content;
-    }
+	private final String name;
 
-    public String getRole() {
-        return role;
-    }
+	private final List<ToolCall> toolCalls;
 
-    public String getName() {
-        return name;
-    }
+	private final String content;
 
-    public List<ToolCall> getToolCalls() {
-        return toolCalls;
-    }
+	private OpenAiChatMessage(Builder builder) {
+		this.role = builder.role;
+		this.name = builder.name;
+		this.toolCalls = builder.toolCalls;
+		this.content = builder.content;
+	}
 
-    public String getContent() {
-        return content;
-    }
+	public String getRole() {
+		return role;
+	}
 
-    public static class Builder {
+	public String getName() {
+		return name;
+	}
 
-        @JsonProperty("role")
-        private String role;
+	public List<ToolCall> getToolCalls() {
+		return toolCalls;
+	}
 
-        @JsonProperty("name")
-        private String name;
+	public String getContent() {
+		return content;
+	}
 
-        @JsonProperty("tool_calls")
-        private List<ToolCall> toolCalls;
+	public static class Builder {
 
-        @JsonProperty("content")
-        private String content;
+		@JsonProperty("role")
+		private String role;
 
-        public Builder role(String role) {
-            this.role = role;
-            return this;
-        }
+		@JsonProperty("name")
+		private String name;
 
-        public Builder name(String name) {
-            this.name = name;
-            return this;
-        }
+		@JsonProperty("tool_calls")
+		private List<ToolCall> toolCalls;
 
-        public Builder toolCalls(List<ToolCall> toolCalls) {
-            this.toolCalls = toolCalls;
-            return this;
-        }
+		@JsonProperty("content")
+		private String content;
 
-        public Builder content(String content) {
-            this.content = content;
-            return this;
-        }
+		public Builder role(String role) {
+			this.role = role;
+			return this;
+		}
 
-        public OpenAiChatMessage build() {
-            return new OpenAiChatMessage(this);
-        }
-    }
-    public record ToolCall(
+		public Builder name(String name) {
+			this.name = name;
+			return this;
+		}
 
-            @JsonProperty("function")
-            ChatCompletionsRequest.Function function,
+		public Builder toolCalls(List<ToolCall> toolCalls) {
+			this.toolCalls = toolCalls;
+			return this;
+		}
 
-            @JsonProperty("id")
-            String id,
+		public Builder content(String content) {
+			this.content = content;
+			return this;
+		}
 
-            @JsonProperty("type")
-            String type
-    ) {
-    }
+		public OpenAiChatMessage build() {
+			return new OpenAiChatMessage(this);
+		}
+
+	}
+
+	public record ToolCall(
+
+			@JsonProperty("function") ChatCompletionsRequest.Function function,
+
+			@JsonProperty("id") String id,
+
+			@JsonProperty("type") String type) {
+	}
+
 }

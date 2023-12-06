@@ -31,143 +31,146 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+")
 class OpenAiClientIT extends AbstractIT {
 
-    @Value("classpath:/prompts/system-message.st")
-    private Resource systemResource;
+	@Value("classpath:/prompts/system-message.st")
+	private Resource systemResource;
 
-    @Test
-    void roleTest() {
-        String request = "Tell me about 3 famous pirates from the Golden Age of Piracy and why they did.";
-        String name = "Bob";
-        String voice = "pirate";
-        UserMessage userMessage = new UserMessage(request);
-        SystemPromptTemplate systemPromptTemplate = new SystemPromptTemplate(systemResource);
-        Message systemMessage = systemPromptTemplate.createMessage(Map.of("name", name, "voice", voice));
-        Prompt prompt = new Prompt(List.of(userMessage, systemMessage));
-        AiResponse response = openAiClient.generate(prompt);
-        // needs fine tuning... evaluateQuestionAndAnswer(request, response, false);
-    }
+	@Test
+	void roleTest() {
+		String request = "Tell me about 3 famous pirates from the Golden Age of Piracy and why they did.";
+		String name = "Bob";
+		String voice = "pirate";
+		UserMessage userMessage = new UserMessage(request);
+		SystemPromptTemplate systemPromptTemplate = new SystemPromptTemplate(systemResource);
+		Message systemMessage = systemPromptTemplate.createMessage(Map.of("name", name, "voice", voice));
+		Prompt prompt = new Prompt(List.of(userMessage, systemMessage));
+		AiResponse response = openAiClient.generate(prompt);
+		// needs fine tuning... evaluateQuestionAndAnswer(request, response, false);
+	}
 
-    @Test
-    void outputParser() {
-        DefaultConversionService conversionService = new DefaultConversionService();
-        ListOutputParser outputParser = new ListOutputParser(conversionService);
+	@Test
+	void outputParser() {
+		DefaultConversionService conversionService = new DefaultConversionService();
+		ListOutputParser outputParser = new ListOutputParser(conversionService);
 
-        String format = outputParser.getFormat();
-        String template = """
-                List five {subject}
-                {format}
-                """;
-        PromptTemplate promptTemplate = new PromptTemplate(template,
-                Map.of("subject", "ice cream flavors", "format", format));
-        Prompt prompt = new Prompt(promptTemplate.createMessage());
-        Generation generation = this.openAiClient.generate(prompt).getGeneration();
+		String format = outputParser.getFormat();
+		String template = """
+				List five {subject}
+				{format}
+				""";
+		PromptTemplate promptTemplate = new PromptTemplate(template,
+				Map.of("subject", "ice cream flavors", "format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
+		Generation generation = this.openAiClient.generate(prompt).getGeneration();
 
 		List<String> list = outputParser.parse(generation.getText());
 		assertThat(list).hasSize(5);
 
-    }
+	}
 
-    @Test
-    void mapOutputParser() {
-        MapOutputParser outputParser = new MapOutputParser();
+	@Test
+	void mapOutputParser() {
+		MapOutputParser outputParser = new MapOutputParser();
 
-        String format = outputParser.getFormat();
-        String template = """
-                Provide me a List of {subject}
-                {format}
-                """;
-        PromptTemplate promptTemplate = new PromptTemplate(template,
-                Map.of("subject", "an array of numbers from 1 to 9 under they key name 'numbers'", "format", format));
-        Prompt prompt = new Prompt(promptTemplate.createMessage());
-        Generation generation = openAiClient.generate(prompt).getGeneration();
+		String format = outputParser.getFormat();
+		String template = """
+				Provide me a List of {subject}
+				{format}
+				""";
+		PromptTemplate promptTemplate = new PromptTemplate(template,
+				Map.of("subject", "an array of numbers from 1 to 9 under they key name 'numbers'", "format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
+		Generation generation = openAiClient.generate(prompt).getGeneration();
 
-        Map<String, Object> result = outputParser.parse(generation.getText());
-        assertThat(result.get("numbers")).isEqualTo(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9));
+		Map<String, Object> result = outputParser.parse(generation.getText());
+		assertThat(result.get("numbers")).isEqualTo(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9));
 
-    }
+	}
 
-    @Test
-    void beanOutputParser() {
+	@Test
+	void beanOutputParser() {
 
-        BeanOutputParser<ActorsFilms> outputParser = new BeanOutputParser<>(ActorsFilms.class);
+		BeanOutputParser<ActorsFilms> outputParser = new BeanOutputParser<>(ActorsFilms.class);
 
-        String format = outputParser.getFormat();
-        String template = """
-                Generate the filmography for a random actor.
-                {format}
-                """;
-        PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
-        Prompt prompt = new Prompt(promptTemplate.createMessage());
-        Generation generation = openAiClient.generate(prompt).getGeneration();
+		String format = outputParser.getFormat();
+		String template = """
+				Generate the filmography for a random actor.
+				{format}
+				""";
+		PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
+		Generation generation = openAiClient.generate(prompt).getGeneration();
 
 		ActorsFilms actorsFilms = outputParser.parse(generation.getText());
 	}
 
-    record ActorsFilmsRecord(String actor, List<String> movies) {
-    }
+	record ActorsFilmsRecord(String actor, List<String> movies) {
+	}
 
-    @Test
-    void beanOutputParserRecords() {
+	@Test
+	void beanOutputParserRecords() {
 
-        BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
+		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
 
-        String format = outputParser.getFormat();
-        String template = """
-                Generate the filmography of 5 movies for Tom Hanks.
-                {format}
-                """;
-        PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
-        Prompt prompt = new Prompt(promptTemplate.createMessage());
-        Generation generation = openAiClient.generate(prompt).getGeneration();
+		String format = outputParser.getFormat();
+		String template = """
+				Generate the filmography of 5 movies for Tom Hanks.
+				{format}
+				""";
+		PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
+		Generation generation = openAiClient.generate(prompt).getGeneration();
 
-        ActorsFilmsRecord actorsFilms = outputParser.parse(generation.getText());
-        System.out.println(actorsFilms);
-        assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
-        assertThat(actorsFilms.movies()).hasSize(5);
-    }
+		ActorsFilmsRecord actorsFilms = outputParser.parse(generation.getText());
+		System.out.println(actorsFilms);
+		assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
+		assertThat(actorsFilms.movies()).hasSize(5);
+	}
 
-    @Test
-    void beanMonoOutputParserRecords() {
+	@Test
+	void beanMonoOutputParserRecords() {
 
-        BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
+		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
 
-        String format = outputParser.getFormat();
-        String template = """
-                Generate the filmography of 5 movies for Tom Hanks.
-                {format}
-                """;
-        PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
-        Prompt prompt = new Prompt(promptTemplate.createMessage());
-        Generation generation = openAiStreamClient.generate(prompt).getGeneration();
+		String format = outputParser.getFormat();
+		String template = """
+				Generate the filmography of 5 movies for Tom Hanks.
+				{format}
+				""";
+		PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
+		Generation generation = openAiStreamClient.generate(prompt).getGeneration();
 
-        ActorsFilmsRecord actorsFilms = outputParser.parse(generation.getText());
-        System.out.println(actorsFilms);
-        assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
-        assertThat(actorsFilms.movies()).hasSize(5);
-    }
+		ActorsFilmsRecord actorsFilms = outputParser.parse(generation.getText());
+		System.out.println(actorsFilms);
+		assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
+		assertThat(actorsFilms.movies()).hasSize(5);
+	}
 
-    @Test
-    void beanStreamOutputParserRecords() {
+	@Test
+	void beanStreamOutputParserRecords() {
 
-        BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
+		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
 
-        String format = outputParser.getFormat();
-        String template = """
-                Generate the filmography of 5 movies for Tom Hanks.
-                {format}
-                """;
-        PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
-        Prompt prompt = new Prompt(promptTemplate.createMessage());
+		String format = outputParser.getFormat();
+		String template = """
+				Generate the filmography of 5 movies for Tom Hanks.
+				{format}
+				""";
+		PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
+		Prompt prompt = new Prompt(promptTemplate.createMessage());
 
-        String generationTextFromStream =
-                openAiStreamClient.generateStream(prompt).map(OpenAiSseResponse::choices)
-                        .toStream().flatMap(List::stream).map(OpenAiSseResponse.Choice::delta)
-                        .map(OpenAiSseResponse.Choice.Delta::content).collect(Collectors.joining());
+		String generationTextFromStream = openAiStreamClient.generateStream(prompt)
+			.map(OpenAiSseResponse::choices)
+			.toStream()
+			.flatMap(List::stream)
+			.map(OpenAiSseResponse.Choice::delta)
+			.map(OpenAiSseResponse.Choice.Delta::content)
+			.collect(Collectors.joining());
 
-        ActorsFilmsRecord actorsFilms = outputParser.parse(generationTextFromStream);
-        System.out.println(actorsFilms);
-        assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
-        assertThat(actorsFilms.movies()).hasSize(5);
-    }
+		ActorsFilmsRecord actorsFilms = outputParser.parse(generationTextFromStream);
+		System.out.println(actorsFilms);
+		assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
+		assertThat(actorsFilms.movies()).hasSize(5);
+	}
 
 }
