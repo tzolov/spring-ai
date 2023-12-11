@@ -16,6 +16,9 @@
 
 package org.springframework.ai.openai.client;
 
+import java.util.List;
+import java.util.function.Predicate;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -23,20 +26,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.client.AiResponse;
-import org.springframework.ai.client.Generation;
+import reactor.core.publisher.Flux;
+
 import org.springframework.ai.prompt.Prompt;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
-
-import java.util.List;
-import java.util.Map;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 public class OpenAiStreamClient implements AiStreamClient {
 
@@ -67,41 +64,6 @@ public class OpenAiStreamClient implements AiStreamClient {
 			.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
 		this.sseType = new ParameterizedTypeReference<>() {
 		};
-	}
-
-	@Override
-	public AiResponse generate(Prompt prompt) {
-		List<OpenAiChatMessage> openAiChatMessages = prompt.getMessages()
-			.stream()
-			.map(message -> new OpenAiChatMessage.Builder().role(message.getMessageTypeValue())
-				.content(message.getContent())
-				.build())
-			.toList();
-
-		ChatCompletionsRequest chatCompletionsRequest = new ChatCompletionsRequest.Builder().stream(false)
-			.model(this.model)
-			.temperature(this.temperature)
-			.messages(openAiChatMessages)
-			.build();
-
-		return getAiResponse(chatCompletionsRequest);
-	}
-
-	private AiResponse getAiResponse(ChatCompletionsRequest chatCompletionsRequest) {
-
-		logger.trace("ChatMessages: {}", chatCompletionsRequest.getMessages());
-
-		List<ChatCompletionResponse.Choice> chatCompletionChoices = createChatCompletion(chatCompletionsRequest)
-			.bodyToMono(ChatCompletionResponse.class)
-			.map(ChatCompletionResponse::choices)
-			.block();
-
-		logger.trace("ChatCompletionChoice: {}", chatCompletionChoices);
-
-		return new AiResponse(chatCompletionChoices.stream()
-			.map(ChatCompletionResponse.Choice::message)
-			.map(chatMessage -> new Generation(chatMessage.getContent(), Map.of("role", chatMessage.getRole())))
-			.collect(Collectors.toList()));
 	}
 
 	private WebClient.ResponseSpec createChatCompletion(ChatCompletionsRequest chatCompletionsRequest) {

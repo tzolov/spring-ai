@@ -9,93 +9,108 @@ import java.util.Map;
 @JsonDeserialize(builder = ChatCompletionsRequest.Builder.class)
 public class ChatCompletionsRequest {
 
-    private final List<OpenAiChatMessage> messages;
-    private final String model;
-    private final Integer frequencyPenalty;
-    private final Map<String, String> logitBias;
-    private final Integer maxTokens;
-    private final Integer n;
-    private final Integer presencePenalty;
-    private final ResponseFormat responseFormat;
-    private final Integer seed;
-    private final List<String> stop;
-    private final Boolean stream;
-    private final Double temperature;
-    private final Integer topP;
-    private final List<Tool> tools;
-    private final String toolChoice;
-    private final String user;
+	private final List<OpenAiChatMessage> messages;
 
-    private ChatCompletionsRequest(Builder builder) {
-        this.messages = builder.messages;
-        this.model = builder.model;
-        this.frequencyPenalty = builder.frequencyPenalty;
-        this.logitBias = builder.logitBias;
-        this.maxTokens = builder.maxTokens;
-        this.n = builder.n;
-        this.presencePenalty = builder.presencePenalty;
-        this.responseFormat = builder.responseFormat;
-        this.seed = builder.seed;
-        this.stop = builder.stop;
-        this.stream = builder.stream;
-        this.temperature = builder.temperature;
-        this.topP = builder.topP;
-        this.tools = builder.tools;
-        this.toolChoice = builder.toolChoice;
-        this.user = builder.user;
-    }
+	private final String model;
 
-    public List<OpenAiChatMessage> getMessages() {
-        return messages;
-    }
+	private final Integer frequencyPenalty;
 
-    public String getModel() {
-        return model;
-    }
+	private final Map<String, String> logitBias;
 
-    public Integer getFrequencyPenalty() {
-        return frequencyPenalty;
-    }
+	private final Integer maxTokens;
 
-    public Map<String, String> getLogitBias() {
-        return logitBias;
-    }
+	private final Integer n;
 
-    public Integer getMaxTokens() {
-        return maxTokens;
-    }
+	private final Integer presencePenalty;
 
-    public Integer getN() {
-        return n;
-    }
+	private final ResponseFormat responseFormat;
 
-    public Integer getPresencePenalty() {
-        return presencePenalty;
-    }
+	private final Integer seed;
 
-    public ResponseFormat getResponseFormat() {
-        return responseFormat;
-    }
+	private final List<String> stop;
 
-    public Integer getSeed() {
-        return seed;
-    }
+	private final Boolean stream;
 
-    public List<String> getStop() {
-        return stop;
-    }
+	private final Double temperature;
 
-    public Boolean getStream() {
-        return stream;
-    }
+	private final Integer topP;
 
-    public Double getTemperature() {
-        return temperature;
-    }
+	private final List<Tool> tools;
 
-    public Integer getTopP() {
-        return topP;
-    }
+	private final String toolChoice;
+
+	private final String user;
+
+	private ChatCompletionsRequest(Builder builder) {
+		this.messages = builder.messages;
+		this.model = builder.model;
+		this.frequencyPenalty = builder.frequencyPenalty;
+		this.logitBias = builder.logitBias;
+		this.maxTokens = builder.maxTokens;
+		this.n = builder.n;
+		this.presencePenalty = builder.presencePenalty;
+		this.responseFormat = builder.responseFormat;
+		this.seed = builder.seed;
+		this.stop = builder.stop;
+		this.stream = builder.stream;
+		this.temperature = builder.temperature;
+		this.topP = builder.topP;
+		this.tools = builder.tools;
+		this.toolChoice = builder.toolChoice;
+		this.user = builder.user;
+	}
+
+	public List<OpenAiChatMessage> getMessages() {
+		return messages;
+	}
+
+	public String getModel() {
+		return model;
+	}
+
+	public Integer getFrequencyPenalty() {
+		return frequencyPenalty;
+	}
+
+	public Map<String, String> getLogitBias() {
+		return logitBias;
+	}
+
+	public Integer getMaxTokens() {
+		return maxTokens;
+	}
+
+	public Integer getN() {
+		return n;
+	}
+
+	public Integer getPresencePenalty() {
+		return presencePenalty;
+	}
+
+	public ResponseFormat getResponseFormat() {
+		return responseFormat;
+	}
+
+	public Integer getSeed() {
+		return seed;
+	}
+
+	public List<String> getStop() {
+		return stop;
+	}
+
+	public Boolean getStream() {
+		return stream;
+	}
+
+	public Double getTemperature() {
+		return temperature;
+	}
+
+	public Integer getTopP() {
+		return topP;
+	}
 
 	public List<Tool> getTools() {
 		return tools;

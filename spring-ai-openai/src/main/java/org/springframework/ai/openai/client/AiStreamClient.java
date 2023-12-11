@@ -16,12 +16,12 @@
 
 package org.springframework.ai.openai.client;
 
-import org.springframework.ai.client.AiClient;
-import org.springframework.ai.prompt.Prompt;
-import org.springframework.ai.prompt.messages.UserMessage;
 import reactor.core.publisher.Flux;
 
-public interface AiStreamClient extends AiClient {
+import org.springframework.ai.prompt.Prompt;
+import org.springframework.ai.prompt.messages.UserMessage;
+
+public interface AiStreamClient {
 
 	default Flux<OpenAiSseResponse> generateStream(String message) {
 		Prompt prompt = new Prompt(new UserMessage(message));

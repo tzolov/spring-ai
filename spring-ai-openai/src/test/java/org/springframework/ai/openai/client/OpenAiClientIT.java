@@ -127,26 +127,6 @@ class OpenAiClientIT extends AbstractIT {
 	}
 
 	@Test
-	void beanMonoOutputParserRecords() {
-
-		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
-
-		String format = outputParser.getFormat();
-		String template = """
-				Generate the filmography of 5 movies for Tom Hanks.
-				{format}
-				""";
-		PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", format));
-		Prompt prompt = new Prompt(promptTemplate.createMessage());
-		Generation generation = openAiStreamClient.generate(prompt).getGeneration();
-
-		ActorsFilmsRecord actorsFilms = outputParser.parse(generation.getText());
-		System.out.println(actorsFilms);
-		assertThat(actorsFilms.actor()).isEqualTo("Tom Hanks");
-		assertThat(actorsFilms.movies()).hasSize(5);
-	}
-
-	@Test
 	void beanStreamOutputParserRecords() {
 
 		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
