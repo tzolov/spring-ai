@@ -31,12 +31,15 @@ import org.springframework.ai.chat.Generation;
 import org.springframework.ai.metadata.ChoiceMetadata;
 import org.springframework.ai.metadata.RateLimit;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.api.OpenAiOptions;
 import org.springframework.ai.openai.api.OpenAiApi.ChatCompletion;
 import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionMessage;
+import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest;
 import org.springframework.ai.openai.api.OpenAiApi.OpenAiApiException;
 import org.springframework.ai.openai.metadata.OpenAiGenerationMetadata;
 import org.springframework.ai.openai.metadata.support.OpenAiResponseHeaderExtractor;
 import org.springframework.ai.prompt.Prompt;
+import org.springframework.ai.prompt.PromptOptions;
 import org.springframework.ai.prompt.messages.Message;
 import org.springframework.http.ResponseEntity;
 import org.springframework.retry.support.RetryTemplate;
@@ -57,6 +60,8 @@ import org.springframework.util.Assert;
  */
 public class OpenAiChatClient implements ChatClient, StreamingChatClient {
 
+	private OpenAiOptions clientOptions;
+
 	private Double temperature = 0.7;
 
 	private String model = "gpt-3.5-turbo";
@@ -74,6 +79,14 @@ public class OpenAiChatClient implements ChatClient, StreamingChatClient {
 	public OpenAiChatClient(OpenAiApi openAiApi) {
 		Assert.notNull(openAiApi, "OpenAiApi must not be null");
 		this.openAiApi = openAiApi;
+	}
+
+	public OpenAiOptions getClientOptions() {
+		return clientOptions;
+	}
+
+	public void setClientOptions(OpenAiOptions clientOptions) {
+		this.clientOptions = clientOptions;
 	}
 
 	public String getModel() {
@@ -96,6 +109,20 @@ public class OpenAiChatClient implements ChatClient, StreamingChatClient {
 	public ChatResponse generate(Prompt prompt) {
 
 		return this.retryTemplate.execute(ctx -> {
+
+			OpenAiOptions clientOpenAiOptionsCopy = new OpenAiOptions(this.clientOptions);
+
+			if (prompt.getOptions() != null) {
+				OpenAiOptions requestOpenAiOptions = null;
+				if (prompt.getOptions().getName().equals("OpenAi")) {
+					requestOpenAiOptions = (OpenAiOptions) prompt.getOptions();
+					OpenAiOptions.merge(clientOpenAiOptionsCopy, requestOpenAiOptions);
+				} if (prompt.getOptions().getName().equals("Generic")) {
+					requestOpenAiOptions = null; // convert generic to OpenAiOptions
+					OpenAiOptions.merge(clientOpenAiOptionsCopy, requestOpenAiOptions);
+				}
+			}
+
 			List<Message> messages = prompt.getMessages();
 
 			List<ChatCompletionMessage> chatCompletionMessages = messages.stream()
@@ -103,9 +130,13 @@ public class OpenAiChatClient implements ChatClient, StreamingChatClient {
 						ChatCompletionMessage.Role.valueOf(m.getMessageType().getValue())))
 				.toList();
 
-			ResponseEntity<ChatCompletion> completionEntity = this.openAiApi
-				.chatCompletionEntity(new OpenAiApi.ChatCompletionRequest(chatCompletionMessages, this.model,
-						this.temperature.floatValue()));
+			ChatCompletionRequest request = new OpenAiApi.ChatCompletionRequest(chatCompletionMessages, clientOpenAiOptionsCopy);
+
+			ResponseEntity<ChatCompletion> completionEntity = this.openAiApi.chatCompletionEntity(request);
+
+			// ResponseEntity<ChatCompletion> completionEntity = this.openAiApi
+			// 	.chatCompletionEntity(new OpenAiApi.ChatCompletionRequest(chatCompletionMessages, this.model,
+			// 			this.temperature.floatValue()));
 
 			var chatCompletion = completionEntity.getBody();
 			if (chatCompletion == null) {

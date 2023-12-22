@@ -26,19 +26,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.ai.prompt.PromptOptions;
+
 /**
  * Helper class for creating strongly-typed Ollama options.
  *
  * @author Christian Tzolov
  * @since 0.8.0
- * @see <a href=
- * "https://github.com/jmorganca/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values">Ollama
+ * @see <a href= "https://github.com/jmorganca/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values">Ollama
  * Valid Parameters and Values</a>
- * @see <a href="https://github.com/jmorganca/ollama/blob/main/api/types.go">Ollama
- * Types</a>
+ * @see <a href="https://github.com/jmorganca/ollama/blob/main/api/types.go">Ollama Types</a>
  */
 @JsonInclude(Include.NON_NULL)
-public class OllamaOptions {
+public class OllamaOptions implements PromptOptions {
 
 	// @formatter:off
 	/**
@@ -231,6 +231,27 @@ public class OllamaOptions {
 	 */
 	@JsonProperty("stop") private List<String> stop;
 
+	public static Builder builder() {
+		return new Builder();
+	}
+
+	public static class Builder {
+
+		private final OllamaOptions options;
+
+		public Builder() {
+			this.options =  new OllamaOptions();
+		}
+
+		public Builder withUseNUMA(Boolean useNUMA) {
+			this.options.useNUMA = useNUMA;
+			return this;
+		}
+
+		public OllamaOptions build() {
+			return this.options;
+		}
+	}
 
 
 	public OllamaOptions withUseNUMA(Boolean useNUMA) {
@@ -662,10 +683,16 @@ public class OllamaOptions {
 		this.stop = stop;
 	}
 
+	@Override
+	public String getName() {
+		return "Ollama";
+	}
+
 	/**
 	 * Convert the {@link OllamaOptions} object to a {@link Map} of key/value pairs.
 	 * @return The {@link Map} of key/value pairs.
 	 */
+	@Override
 	public Map<String, Object> toMap() {
 		try {
 			var json = new ObjectMapper().writeValueAsString(this);

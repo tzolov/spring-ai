@@ -266,6 +266,14 @@ public class OpenAiApi {
 			@JsonProperty("tool_choice") ToolChoice toolChoice,
 			@JsonProperty("user") String user) {
 
+		public ChatCompletionRequest(List<ChatCompletionMessage> messages, OpenAiOptions openAiOptions) {
+			this(messages, openAiOptions.getModel(), openAiOptions.getFrequencyPenalty(),
+					openAiOptions.getLogitBias(), openAiOptions.getMaxTokens(), openAiOptions.getN(),
+					openAiOptions.getPresencePenalty(), null, openAiOptions.getSeed(), openAiOptions.getStop(),
+					openAiOptions.getStream(), openAiOptions.getTemperature(), openAiOptions.getTopP(),
+					null, null, openAiOptions.getUser());
+		}
+
 		/**
 		 * Shortcut constructor for a chat completion request with the given messages and model.
 		 *

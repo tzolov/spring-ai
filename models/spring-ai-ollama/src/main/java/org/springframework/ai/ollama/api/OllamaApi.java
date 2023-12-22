@@ -146,6 +146,7 @@ public class OllamaApi {
 			@JsonProperty("prompt") String prompt,
 			@JsonProperty("format") String format,
 			@JsonProperty("options") Map<String, Object> options,
+			// @JsonProperty("options") OllamaOptions options,
 			@JsonProperty("system") String system,
 			@JsonProperty("template") String template,
 			@JsonProperty("context") List<Integer> context,

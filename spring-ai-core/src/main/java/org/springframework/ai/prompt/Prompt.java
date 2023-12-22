@@ -25,6 +25,8 @@ import java.util.Objects;
 
 public class Prompt {
 
+	private PromptOptions options;
+
 	private final List<Message> messages;
 
 	public Prompt(String contents) {
@@ -37,6 +39,14 @@ public class Prompt {
 
 	public Prompt(List<Message> messages) {
 		this.messages = messages;
+	}
+
+	public PromptOptions getOptions() {
+		return options;
+	}
+
+	public void setOptions(PromptOptions options) {
+		this.options = options;
 	}
 
 	public String getContents() {

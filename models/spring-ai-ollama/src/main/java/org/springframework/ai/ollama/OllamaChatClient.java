@@ -16,8 +16,10 @@
 
 package org.springframework.ai.ollama;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import reactor.core.publisher.Flux;
 
@@ -127,10 +129,16 @@ public class OllamaChatClient implements ChatClient, StreamingChatClient {
 			.map(m -> OllamaApi.Message.builder(toRole(m)).withContent(m.getContent()).build())
 			.toList();
 
+		Map<String, Object> requestOptions = new HashMap<>(this.clientOptions);
+
+		if (prompt.getOptions().getName().equals("Ollama")) {
+			requestOptions.putAll(prompt.getOptions().toMap());
+		}
+
 		return ChatRequest.builder(model)
 			.withStream(stream)
 			.withMessages(ollamaMessages)
-			.withOptions(this.clientOptions)
+			.withOptions(requestOptions)
 			.build();
 	}
 
