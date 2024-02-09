@@ -72,9 +72,8 @@ public class OllamaAutoConfigurationIT {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner().withPropertyValues(
 	// @formatter:off
-				"spring.ai.ollama.chat.enabled=true",
-				"spring.ai.ollama.chat.options.model=" + MODEL_NAME,
 				"spring.ai.ollama.baseUrl=" + baseUrl,
+				"spring.ai.ollama.chat.options.model=" + MODEL_NAME,
 				"spring.ai.ollama.chat.options.temperature=0.5",
 				"spring.ai.ollama.chat.options.topK=10")
 				// @formatter:on
