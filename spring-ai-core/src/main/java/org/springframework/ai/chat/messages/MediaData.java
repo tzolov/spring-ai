@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2024 the original author or authors.
+ * Copyright 2024-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,31 @@
 
 package org.springframework.ai.chat.messages;
 
-import java.util.Map;
+import org.springframework.util.Assert;
+import org.springframework.util.MimeType;
 
-public class FunctionMessage extends AbstractMessage {
+/**
+ *
+ * @author Christian Tzolov
+ */
+public class MediaData {
 
-	public FunctionMessage(String content) {
-		super(MessageType.SYSTEM, content);
+	private final MimeType mimeType;
+
+	private final Object data;
+
+	public MediaData(MimeType mimeType, Object data) {
+		Assert.notNull(mimeType, "MimeType must not be null");
+		// Assert.notNull(data, "Data must not be null");
+		this.mimeType = mimeType;
+		this.data = data;
 	}
 
-	public FunctionMessage(String content, Map<String, Object> properties) {
-		super(MessageType.SYSTEM, content, properties);
+	public MimeType getMimeType() {
+		return this.mimeType;
 	}
 
-	@Override
-	public String toString() {
-		return "FunctionMessage{" + "content='" + getContent() + '\'' + ", properties=" + properties + ", messageType="
-				+ messageType + '}';
+	public Object getData() {
+		return this.data;
 	}
-
 }

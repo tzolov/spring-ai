@@ -16,19 +16,23 @@
 
 package org.springframework.ai.chat.messages;
 
-import org.springframework.core.io.Resource;
-import org.springframework.util.StreamUtils;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import org.springframework.core.io.Resource;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.MimeTypeUtils;
+import org.springframework.util.StreamUtils;
 
 public abstract class AbstractMessage implements Message {
 
-	protected String content;
+	protected List<MediaData> contentParts = new ArrayList<>();
 
 	/**
 	 * Additional options for the message to influence the response, not a generative map.
@@ -47,7 +51,21 @@ public abstract class AbstractMessage implements Message {
 
 	protected AbstractMessage(MessageType messageType, String content, Map<String, Object> messageProperties) {
 		this.messageType = messageType;
-		this.content = content;
+		this.contentParts.add(new MediaData(MimeTypeUtils.TEXT_PLAIN, content));
+		this.properties = messageProperties;
+	}
+
+	protected AbstractMessage(MessageType messageType, List<MediaData> contentParts) {
+		this(messageType, contentParts, Map.of());
+	}
+
+	protected AbstractMessage(MessageType messageType, List<MediaData> contentParts,
+			Map<String, Object> messageProperties) {
+		this.messageType = messageType;
+
+		if (!CollectionUtils.isEmpty(contentParts)) {
+			this.contentParts.addAll(contentParts);
+		}
 		this.properties = messageProperties;
 	}
 
@@ -59,7 +77,8 @@ public abstract class AbstractMessage implements Message {
 		this.messageType = messageType;
 		this.properties = messageProperties;
 		try (InputStream inputStream = resource.getInputStream()) {
-			this.content = StreamUtils.copyToString(inputStream, Charset.defaultCharset());
+			String textContent = StreamUtils.copyToString(inputStream, Charset.defaultCharset());
+			this.contentParts.add(new MediaData(MimeTypeUtils.TEXT_PLAIN, textContent));
 		}
 		catch (IOException ex) {
 			throw new RuntimeException("Failed to read resource", ex);
@@ -68,7 +87,25 @@ public abstract class AbstractMessage implements Message {
 
 	@Override
 	public String getContent() {
-		return this.content;
+		Object data = null;
+		if (CollectionUtils.isEmpty(this.contentParts)) {
+			MediaData part = this.contentParts.stream()
+					.filter(c -> c.getMimeType() == MimeTypeUtils.TEXT_PLAIN)
+					.findFirst().get();
+
+			if (part != null) {
+				data = part.getData();
+			}
+		}
+
+		if (data == null) {
+			return null;
+		}
+		return (data instanceof String) ? (String) data : new String((byte[]) data, Charset.defaultCharset());
+	}
+
+	public List<MediaData> getMedia() {
+		return this.contentParts;
 	}
 
 	@Override
@@ -85,7 +122,7 @@ public abstract class AbstractMessage implements Message {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
-		result = prime * result + ((content == null) ? 0 : content.hashCode());
+		result = prime * result + ((contentParts == null) ? 0 : contentParts.hashCode());
 		result = prime * result + ((properties == null) ? 0 : properties.hashCode());
 		result = prime * result + ((messageType == null) ? 0 : messageType.hashCode());
 		return result;
@@ -100,11 +137,11 @@ public abstract class AbstractMessage implements Message {
 		if (getClass() != obj.getClass())
 			return false;
 		AbstractMessage other = (AbstractMessage) obj;
-		if (content == null) {
-			if (other.content != null)
+		if (contentParts == null) {
+			if (other.contentParts != null)
 				return false;
 		}
-		else if (!content.equals(other.content))
+		else if (!contentParts.equals(other.contentParts))
 			return false;
 		if (properties == null) {
 			if (other.properties != null)
