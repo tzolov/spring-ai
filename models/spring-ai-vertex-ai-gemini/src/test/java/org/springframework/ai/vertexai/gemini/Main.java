@@ -20,6 +20,7 @@ import java.net.FileNameMap;
 import java.net.URLConnection;
 
 import com.google.cloud.vertexai.api.GenerationConfig;
+import com.google.cloud.vertexai.generativeai.preview.ResponseHandler;
 import jakarta.activation.MimetypesFileTypeMap;
 
 import org.springframework.core.io.DefaultResourceLoader;
@@ -31,6 +32,8 @@ import org.springframework.core.io.DefaultResourceLoader;
 public class Main {
 
 	public static void main(String[] args) {
+
+		ResponseHandler responseHandler = new ResponseHandler();
 
 		FileNameMap fileNameMap = URLConnection.getFileNameMap();
 

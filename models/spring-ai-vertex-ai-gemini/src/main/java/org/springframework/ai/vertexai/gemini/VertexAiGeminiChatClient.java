@@ -185,22 +185,6 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 
 	static class PartsMapper {
 
-		private static final Map<String, String> EXTENSION_TO_MIME_TYPE = new HashMap<>();
-
-		static {
-			EXTENSION_TO_MIME_TYPE.put("avif", "image/avif");
-			EXTENSION_TO_MIME_TYPE.put("bmp", "image/bmp");
-			EXTENSION_TO_MIME_TYPE.put("gif", "image/gif");
-			EXTENSION_TO_MIME_TYPE.put("jpe", "image/jpeg");
-			EXTENSION_TO_MIME_TYPE.put("jpeg", "image/jpeg");
-			EXTENSION_TO_MIME_TYPE.put("jpg", "image/jpeg");
-			EXTENSION_TO_MIME_TYPE.put("png", "image/png");
-			EXTENSION_TO_MIME_TYPE.put("svg", "image/svg+xml");
-			EXTENSION_TO_MIME_TYPE.put("tif", "image/tiff");
-			EXTENSION_TO_MIME_TYPE.put("tiff", "image/tiff");
-			EXTENSION_TO_MIME_TYPE.put("webp", "image/webp");
-		}
-
 		static List<Part> map(Message message, String context) {
 			if (message instanceof UserMessage) {
 				return ((UserMessage) message).getMedia().stream()
@@ -256,18 +240,6 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 		// return fromMimeTypeAndData(image.mimeType(), Base64.getDecoder().decode(image.base64Data()));
 		// }
 
-		static String detectMimeType(URI url) {
-			String[] pathParts = url.getPath().split("\\.");
-			if (pathParts.length > 1) {
-				String extension = pathParts[pathParts.length - 1].toLowerCase();
-				String mimeType = EXTENSION_TO_MIME_TYPE.get(extension);
-				if (mimeType != null) {
-					return mimeType;
-				}
-			}
-			throw new IllegalArgumentException(
-					String.format("Unable to detect the MIME type of '%s'. Please provide it explicitly.", url));
-		}
 	}
 
 	@Override
