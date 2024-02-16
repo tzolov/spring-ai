@@ -17,11 +17,8 @@
 package org.springframework.ai.vertexai.gemini;
 
 import java.io.IOException;
-import java.net.URI;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.google.cloud.vertexai.VertexAI;
@@ -30,27 +27,34 @@ import com.google.cloud.vertexai.api.GenerateContentResponse;
 import com.google.cloud.vertexai.api.GenerationConfig;
 import com.google.cloud.vertexai.api.Part;
 import com.google.cloud.vertexai.generativeai.preview.GenerativeModel;
+import com.google.cloud.vertexai.generativeai.preview.PartMaker;
+import com.google.cloud.vertexai.generativeai.preview.ResponseStream;
+import reactor.core.publisher.Flux;
 
 import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.ChatOptions;
 import org.springframework.ai.chat.ChatResponse;
 import org.springframework.ai.chat.Generation;
+import org.springframework.ai.chat.StreamingChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.MediaData;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.ModelOptionsUtils;
+import org.springframework.ai.vertexai.gemini.metadata.VertexAiChatResponseMetadata;
+import org.springframework.ai.vertexai.gemini.metadata.VertexAiUsage;
 import org.springframework.beans.factory.DisposableBean;
-import org.springframework.util.MimeTypeUtils;
+import org.springframework.lang.NonNull;
+import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
- *
  * @author Christian Tzolov
+ * @since 0.8.1
  */
-public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
+public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient, DisposableBean {
 
 	private final VertexAI vertexAI;
 
@@ -59,6 +63,24 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 	private final GenerationConfig generationConfig;
 
 	private GenerativeModel generativeModel;
+
+	public enum GeminiMessageType {
+
+		USER("user"),
+
+		MODEL("model");
+
+		GeminiMessageType(String value) {
+			this.value = value;
+		}
+
+		public final String value;
+
+		public String getValue() {
+			return this.value;
+		}
+
+	}
 
 	public VertexAiGeminiChatClient(VertexAI vertexAI) {
 		this(vertexAI, VertexAiGeminiChatOptions.builder().build());
@@ -75,22 +97,61 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 	@Override
 	public ChatResponse call(Prompt prompt) {
 
+		try {
+			var geminiRequest = toGeminiRequest(prompt);
 
-		String vertexContext = prompt.getInstructions()
-				.stream()
-				.filter(m -> m.getMessageType() == MessageType.SYSTEM)
-				.map(m -> m.getContent())
-				.collect(Collectors.joining("\n"));
+			GenerateContentResponse response = geminiRequest.model.generateContent(geminiRequest.contents,
+					geminiRequest.config);
 
-		List<Content> contents = prompt.getInstructions()
+			List<Generation> generations = response.getCandidatesList()
 				.stream()
-				.filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
-				.map(message -> Content.newBuilder()
-						.setRole(messageTypeMapping(message.getMessageType()))
-						.addAllParts(PartsMapper.map(message, vertexContext))
-						.build())
+				.map(candidate -> candidate.getContent().getPartsList())
+				.flatMap(List::stream)
+				.map(Part::getText)
+				.map(t -> new Generation(t.toString()))
 				.toList();
 
+			return new ChatResponse(generations, toChatResponseMetadata(response));
+		}
+		catch (IOException e) {
+			throw new RuntimeException("Failed to generate content", e);
+		}
+	}
+
+	@Override
+	public Flux<ChatResponse> stream(Prompt prompt) {
+		try {
+
+			var request = toGeminiRequest(prompt);
+
+			ResponseStream<GenerateContentResponse> responseStream = request.model
+				.generateContentStream(request.contents, request.config);
+
+			return Flux.fromStream(responseStream.stream()).map(response -> {
+				List<Generation> generations = response.getCandidatesList()
+					.stream()
+					.map(candidate -> candidate.getContent().getPartsList())
+					.flatMap(List::stream)
+					.map(Part::getText)
+					.map(t -> new Generation(t.toString()))
+					.toList();
+
+				return new ChatResponse(generations, toChatResponseMetadata(response));
+			});
+		}
+		catch (IOException e) {
+			throw new RuntimeException("Failed to generate content", e);
+		}
+	}
+
+	private VertexAiChatResponseMetadata toChatResponseMetadata(GenerateContentResponse response) {
+		return new VertexAiChatResponseMetadata(new VertexAiUsage(response.getUsageMetadata()));
+	}
+
+	private record GeminiRequest(List<Content> contents, GenerativeModel model, GenerationConfig config) {
+	}
+
+	private GeminiRequest toGeminiRequest(Prompt prompt) {
 		GenerationConfig generationConfig = this.generationConfig;
 		GenerativeModel generativeModel = this.generativeModel;
 
@@ -118,21 +179,7 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 			}
 		}
 
-		try {
-			GenerateContentResponse result = generativeModel.generateContent(contents, generationConfig);
-
-			List<Generation> generations = result.getCandidatesList().stream()
-					.map(candidate -> candidate.getContent().getPartsList())
-					.flatMap(List::stream)
-					.map(Part::getText)
-					.map(t -> new Generation(t.toString()))
-					.toList();
-
-			return new ChatResponse(generations);
-		}
-		catch (IOException e) {
-			throw new RuntimeException("Failed to generate content", e);
-		}
+		return new GeminiRequest(toGeminiContent(prompt), generativeModel, generationConfig);
 	}
 
 	private GenerationConfig toGenerationConfig(VertexAiGeminiChatOptions options) {
@@ -173,73 +220,70 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 		return generationConfigBuilder.build();
 	}
 
-	private static String messageTypeMapping(MessageType type) {
-		switch (type) {
-		case USER:
-			return "user";
-		case ASSISTANT:
-			return "model";
-		}
-		throw new IllegalArgumentException("Unsupported message type: " + type);
+	private List<Content> toGeminiContent(Prompt prompt) {
+
+		String systemContext = prompt.getInstructions()
+			.stream()
+			.filter(m -> m.getMessageType() == MessageType.SYSTEM)
+			.map(m -> m.getContent())
+			.collect(Collectors.joining("\n"));
+
+		List<Content> contents = prompt.getInstructions()
+			.stream()
+			.filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
+			.map(message -> Content.newBuilder()
+				.setRole(toGeminiMessageType(message.getMessageType()).getValue())
+				.addAllParts(messageToGeminiParts(message, systemContext))
+				.build())
+			.toList();
+
+		return contents;
 	}
 
-	static class PartsMapper {
+	private static GeminiMessageType toGeminiMessageType(@NonNull MessageType type) {
 
-		static List<Part> map(Message message, String context) {
-			if (message instanceof UserMessage) {
-				return ((UserMessage) message).getMedia().stream()
-						.map(part -> PartsMapper.convertToParts(part, context))
-						.toList();
-			}
-			else if (message instanceof AssistantMessage) {
-				return Collections.singletonList(Part.newBuilder()
-						.setText(((AssistantMessage) message).getContent())
-						.build());
-			}
-			else {
-				throw new IllegalArgumentException("Gemini doesn't support message type: " + message.getClass());
-			}
+		Assert.notNull(type, "Message type must not be null");
+
+		switch (type) {
+			case USER:
+				return GeminiMessageType.USER;
+			case ASSISTANT:
+				return GeminiMessageType.MODEL;
+			default:
+				throw new IllegalArgumentException("Unsupported message type: " + type);
 		}
+	}
 
-		// private static Part map(Content content) {
-		// if (content instanceof TextContent) {
-		// return map((TextContent) content);
-		// }
-		// else if (content instanceof ImageContent) {
-		// return map((ImageContent) content);
-		// }
-		// else {
-		// throw illegalArgument("Unknown content type: " + content);
-		// }
-		// }
+	static List<Part> messageToGeminiParts(Message message, String systemContext) {
 
-		private static Part convertToParts(MediaData contentPart, String context) {
-			String data = (contentPart.getData() == null) ? "null" : contentPart.getData().toString();
+		if (message instanceof UserMessage userMessage) {
 
-			return Part.newBuilder()
-					.setText(context + "\n" + data)
-					.build();
+			String messageTextContent = (userMessage.getContent() == null) ? "null" : userMessage.getContent();
+			if (!StringUtils.hasText(systemContext)) {
+				messageTextContent = systemContext + "\n\n" + messageTextContent;
+			}
+			Part textPart = Part.newBuilder().setText(messageTextContent).build();
+
+			List<Part> parts = new ArrayList<>(List.of(textPart));
+
+			List<Part> mediaParts = userMessage.getMediaData()
+				.stream()
+				.map(mediaData -> PartMaker.fromMimeTypeAndData(mediaData.getMimeType().toString(),
+						mediaData.getData()))
+				.toList();
+
+			if (!CollectionUtils.isEmpty(mediaParts)) {
+				parts.addAll(mediaParts);
+			}
+
+			return parts;
 		}
-		// private static Part map(TextContent content) {
-		// return Part.newBuilder()
-		// .setText(content.text())
-		// .build();
-		// }
-
-		// static Part map(ImageContent content) {
-		// Image image = content.image();
-		// if (image.url() != null) {
-		// String mimeType = getOrDefault(image.mimeType(), () -> detectMimeType(image.url()));
-		// if (image.url().getScheme().equals("gs")) {
-		// return fromMimeTypeAndData(mimeType, image.url());
-		// }
-		// else {
-		// return fromMimeTypeAndData(mimeType, readBytes(image.url().toString()));
-		// }
-		// }
-		// return fromMimeTypeAndData(image.mimeType(), Base64.getDecoder().decode(image.base64Data()));
-		// }
-
+		else if (message instanceof AssistantMessage assistantMessage) {
+			return List.of(Part.newBuilder().setText(assistantMessage.getContent()).build());
+		}
+		else {
+			throw new IllegalArgumentException("Gemini doesn't support message type: " + message.getClass());
+		}
 	}
 
 	@Override
@@ -248,4 +292,5 @@ public class VertexAiGeminiChatClient implements ChatClient, DisposableBean {
 			this.vertexAI.close();
 		}
 	}
+
 }

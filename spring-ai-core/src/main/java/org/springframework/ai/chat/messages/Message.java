@@ -23,7 +23,7 @@ public interface Message {
 
 	String getContent();
 
-	List<MediaData> getMedia();
+	List<MediaData> getMediaData();
 
 	Map<String, Object> getProperties();
 

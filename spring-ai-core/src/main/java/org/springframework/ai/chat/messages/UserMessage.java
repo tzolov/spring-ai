@@ -35,8 +35,8 @@ public class UserMessage extends AbstractMessage {
 		super(MessageType.USER, resource);
 	}
 
-	public UserMessage(List<MediaData> contentParts) {
-		super(MessageType.USER, contentParts);
+	public UserMessage(String textContent, List<MediaData> mediaDataList) {
+		super(MessageType.USER, textContent, mediaDataList);
 	}
 
 	@Override

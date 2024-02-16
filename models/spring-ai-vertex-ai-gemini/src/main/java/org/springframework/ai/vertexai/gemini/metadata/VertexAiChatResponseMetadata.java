@@ -14,32 +14,26 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.vertexai.gemini;
+package org.springframework.ai.vertexai.gemini.metadata;
 
-import java.net.FileNameMap;
-import java.net.URLConnection;
-
-import com.google.cloud.vertexai.api.GenerationConfig;
-import com.google.cloud.vertexai.generativeai.preview.ResponseHandler;
-import jakarta.activation.MimetypesFileTypeMap;
-
-import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
 
 /**
- *
  * @author Christian Tzolov
+ * @since 0.8.1
  */
-public class Main {
+public class VertexAiChatResponseMetadata implements ChatResponseMetadata {
 
-	public static void main(String[] args) {
+	private final VertexAiUsage usage;
 
-		ResponseHandler responseHandler = new ResponseHandler();
+	public VertexAiChatResponseMetadata(VertexAiUsage usage) {
+		this.usage = usage;
+	}
 
-		FileNameMap fileNameMap = URLConnection.getFileNameMap();
-
-		MimetypesFileTypeMap fileTypeMap = new MimetypesFileTypeMap();
-
-		GenerationConfig.Builder builder = GenerationConfig.newBuilder();
+	@Override
+	public Usage getUsage() {
+		return this.usage;
 	}
 
 }

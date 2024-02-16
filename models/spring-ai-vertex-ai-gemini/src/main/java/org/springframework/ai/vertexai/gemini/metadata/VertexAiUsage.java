@@ -14,33 +14,35 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.chat.messages;
+package org.springframework.ai.vertexai.gemini.metadata;
 
+import com.google.cloud.vertexai.api.GenerateContentResponse.UsageMetadata;
+
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.util.Assert;
-import org.springframework.util.MimeType;
 
 /**
  * @author Christian Tzolov
+ * @since 0.8.1
+ * 
  */
-public class MediaData {
+public class VertexAiUsage implements Usage {
 
-	private final MimeType mimeType;
+	private final UsageMetadata usageMetadata;
 
-	private final Object data;
-
-	public MediaData(MimeType mimeType, Object data) {
-		Assert.notNull(mimeType, "MimeType must not be null");
-		// Assert.notNull(data, "Data must not be null");
-		this.mimeType = mimeType;
-		this.data = data;
+	public VertexAiUsage(UsageMetadata usageMetadata) {
+		Assert.notNull(usageMetadata, "UsageMetadata must not be null");
+		this.usageMetadata = usageMetadata;
 	}
 
-	public MimeType getMimeType() {
-		return this.mimeType;
+	@Override
+	public Long getPromptTokens() {
+		return Long.valueOf(usageMetadata.getPromptTokenCount());
 	}
 
-	public Object getData() {
-		return this.data;
+	@Override
+	public Long getGenerationTokens() {
+		return Long.valueOf(usageMetadata.getCandidatesTokenCount());
 	}
 
 }

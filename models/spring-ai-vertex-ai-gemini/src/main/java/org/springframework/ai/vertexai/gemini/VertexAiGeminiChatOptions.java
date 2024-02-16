@@ -26,9 +26,8 @@ import org.springframework.ai.chat.ChatOptions;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- *
  * @author Christian Tzolov
- * @since 0.8.0
+ * @since 0.8.1
  */
 @JsonInclude(Include.NON_NULL)
 public class VertexAiGeminiChatOptions implements ChatOptions {
@@ -72,9 +71,8 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	/**
 	 * Gemini model name.
 	 */
-	private @JsonProperty("modelName") String modelName = "gemini-pro";
+	private @JsonProperty("modelName") String modelName = "gemini-pro-vision";
 	// @formatter:on
-
 
 	public static Builder builder() {
 		return new Builder();
@@ -142,6 +140,7 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 		public VertexAiGeminiChatOptions build() {
 			return this.options;
 		}
+
 	}
 
 	public List<String> getStopSequences() {
@@ -241,4 +240,5 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	public void setModelName(String modelName) {
 		this.modelName = modelName;
 	}
+
 }
