@@ -71,9 +71,7 @@ The prefix `spring.ai.vertex.ai.gemini.chat` is the property prefix that lets yo
 | spring.ai.vertex.ai.gemini.chat.options.candidateCount | The number of generated response messages to return. This value must be between [1, 8], inclusive. Defaults to 1. | -
 | spring.ai.vertex.ai.gemini.chat.options.candidateCount | The number of generated response messages to return. This value must be between [1, 8], inclusive. Defaults to 1. | -
 | spring.ai.vertex.ai.gemini.chat.options.maxOutputTokens | The maximum number of tokens to generate. | -
-| spring.ai.vertex.ai.gemini.chat.options.echo |  | -
 | spring.ai.vertex.ai.gemini.chat.options.frequencyPenalty |  | -
-| spring.ai.vertex.ai.gemini.chat.options.logprobs |  | -
 | spring.ai.vertex.ai.gemini.chat.options.presencePenalty |  | -
 |====
 

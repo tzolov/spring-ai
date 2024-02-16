@@ -59,15 +59,6 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	 * Optional. The maximum number of tokens to generate.
 	 */
 	private @JsonProperty("maxOutputTokens") Integer maxOutputTokens;
-
-	private @JsonProperty("echo") Boolean echo;
-
-	private @JsonProperty("frequencyPenalty") Float frequencyPenalty;
-
-	private @JsonProperty("logprobs") Integer logprobs;
-
-	private @JsonProperty("presencePenalty") Float presencePenalty;
-
 	/**
 	 * Gemini model name.
 	 */
@@ -109,26 +100,6 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 
 		public Builder withMaxOutputTokens(Integer maxOutputTokens) {
 			this.options.setMaxOutputTokens(maxOutputTokens);
-			return this;
-		}
-
-		public Builder withEcho(Boolean echo) {
-			this.options.setEcho(echo);
-			return this;
-		}
-
-		public Builder withFrequencyPenalty(Float frequencyPenalty) {
-			this.options.setFrequencyPenalty(frequencyPenalty);
-			return this;
-		}
-
-		public Builder withLogprobs(Integer logprobs) {
-			this.options.setLogprobs(logprobs);
-			return this;
-		}
-
-		public Builder withPresencePenalty(Float presencePenalty) {
-			this.options.setPresencePenalty(presencePenalty);
 			return this;
 		}
 
@@ -199,38 +170,6 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 
 	public void setMaxOutputTokens(Integer maxOutputTokens) {
 		this.maxOutputTokens = maxOutputTokens;
-	}
-
-	public Boolean getEcho() {
-		return this.echo;
-	}
-
-	public void setEcho(Boolean echo) {
-		this.echo = echo;
-	}
-
-	public Float getFrequencyPenalty() {
-		return this.frequencyPenalty;
-	}
-
-	public void setFrequencyPenalty(Float frequencyPenalty) {
-		this.frequencyPenalty = frequencyPenalty;
-	}
-
-	public Integer getLogprobs() {
-		return this.logprobs;
-	}
-
-	public void setLogprobs(Integer logprobs) {
-		this.logprobs = logprobs;
-	}
-
-	public Float getPresencePenalty() {
-		return this.presencePenalty;
-	}
-
-	public void setPresencePenalty(Float presencePenalty) {
-		this.presencePenalty = presencePenalty;
 	}
 
 	public String getModelName() {

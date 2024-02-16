@@ -42,12 +42,7 @@ public class VertexAiGeminiAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public VertexAI vertexAi(VertexAiGeminiConnectionProperties connectionProperties) {
-		try {
-			return new VertexAI(connectionProperties.getProjectId(), connectionProperties.getLocation());
-		}
-		catch (IOException e) {
-			throw new RuntimeException("Failed to create Vertex Gemini AI", e);
-		}
+		return new VertexAI(connectionProperties.getProjectId(), connectionProperties.getLocation());
 	}
 
 	@Bean

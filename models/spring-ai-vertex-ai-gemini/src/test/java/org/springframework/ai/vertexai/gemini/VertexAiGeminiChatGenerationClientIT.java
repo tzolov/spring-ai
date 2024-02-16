@@ -207,12 +207,7 @@ class VertexAiGeminiChatGenerationClientIT {
 		public VertexAI vertexAiApi() {
 			String projectId = System.getenv("VERTEX_AI_GEMINI_PROJECT_ID");
 			String location = System.getenv("VERTEX_AI_GEMINI_LOCATION");
-			try {
-				return new VertexAI(projectId, location);
-			}
-			catch (IOException e) {
-				throw new RuntimeException("Failed to create VertexAI", e);
-			}
+			return new VertexAI(projectId, location);
 		}
 
 		@Bean

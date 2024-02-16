@@ -26,9 +26,9 @@ import com.google.cloud.vertexai.api.Content;
 import com.google.cloud.vertexai.api.GenerateContentResponse;
 import com.google.cloud.vertexai.api.GenerationConfig;
 import com.google.cloud.vertexai.api.Part;
-import com.google.cloud.vertexai.generativeai.preview.GenerativeModel;
-import com.google.cloud.vertexai.generativeai.preview.PartMaker;
-import com.google.cloud.vertexai.generativeai.preview.ResponseStream;
+import com.google.cloud.vertexai.generativeai.GenerativeModel;
+import com.google.cloud.vertexai.generativeai.PartMaker;
+import com.google.cloud.vertexai.generativeai.ResponseStream;
 import reactor.core.publisher.Flux;
 
 import org.springframework.ai.chat.ChatClient;
@@ -198,23 +198,11 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 		if (options.getTopP() != null) {
 			generationConfigBuilder.setTopP(options.getTopP());
 		}
-		if (options.getEcho() != null) {
-			generationConfigBuilder.setEcho(options.getEcho());
-		}
 		if (options.getCandidateCount() != null) {
 			generationConfigBuilder.setCandidateCount(options.getCandidateCount());
 		}
-		if (options.getLogprobs() != null) {
-			generationConfigBuilder.setLogprobs(options.getLogprobs());
-		}
 		if (options.getStopSequences() != null) {
 			generationConfigBuilder.addAllStopSequences(options.getStopSequences());
-		}
-		if (options.getFrequencyPenalty() != null) {
-			generationConfigBuilder.setFrequencyPenalty(options.getFrequencyPenalty());
-		}
-		if (options.getPresencePenalty() != null) {
-			generationConfigBuilder.setPresencePenalty(options.getPresencePenalty());
 		}
 
 		return generationConfigBuilder.build();
