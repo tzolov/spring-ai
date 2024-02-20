@@ -20,7 +20,6 @@ import java.util.List;
 
 import com.google.cloud.vertexai.VertexAI;
 
-import org.springframework.ai.autoconfigure.NativeHints;
 import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatClient;
@@ -29,7 +28,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.util.CollectionUtils;
 
 /**
@@ -39,7 +37,6 @@ import org.springframework.util.CollectionUtils;
  * @since 0.8.0
  */
 @ConditionalOnClass(VertexAI.class)
-@ImportRuntimeHints(NativeHints.class)
 @EnableConfigurationProperties({ VertexAiGeminiChatProperties.class, VertexAiGeminiConnectionProperties.class })
 public class VertexAiGeminiAutoConfiguration {
 
