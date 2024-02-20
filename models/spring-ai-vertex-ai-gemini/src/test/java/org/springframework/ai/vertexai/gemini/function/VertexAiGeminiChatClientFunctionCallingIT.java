@@ -18,14 +18,18 @@ package org.springframework.ai.vertexai.gemini.function;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import com.google.cloud.vertexai.VertexAI;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 
 import org.springframework.ai.chat.ChatResponse;
+import org.springframework.ai.chat.Generation;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -125,6 +129,42 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 		// assertThat(response.getResult().getOutput().getContent()).containsAnyOf("10.0",
 		// "10");
 		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("15.0", "15");
+
+	}
+
+	@Test
+	public void functionCallTestInferredOpenApiSchemaStream() {
+
+		UserMessage userMessage = new UserMessage(
+				"What's the weather like in San Francisco, in Paris and in Tokyo? Use Multi-turn function calling.");
+
+		List<Message> messages = new ArrayList<>(List.of(userMessage));
+
+		var promptOptions = VertexAiGeminiChatOptions.builder()
+			.withModelName("gemini-pro")
+			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
+				.withSchemaType(SchemaType.OPEN_API)
+				.withName("getCurrentWeather")
+				.withDescription("Get the current weather in a given location")
+				.build()))
+			.build();
+
+		Flux<ChatResponse> response = vertexGeminiClient.stream(new Prompt(messages, promptOptions));
+
+		String responseString = response.collectList()
+			.block()
+			.stream()
+			.map(ChatResponse::getResults)
+			.flatMap(List::stream)
+			.map(Generation::getOutput)
+			.map(AssistantMessage::getContent)
+			.collect(Collectors.joining());
+
+		logger.info("Response: {}", responseString);
+
+		assertThat(responseString).containsAnyOf("15.0", "15");
+		assertThat(responseString).containsAnyOf("30.0", "30");
+		assertThat(responseString).containsAnyOf("10.0", "10");
 
 	}
 

@@ -141,7 +141,6 @@ class VertexAiGeminiChatClientIT {
 	void textStream() {
 
 		String generationTextFromStream = client.stream(new Prompt("Explain Bulgaria? Answer in 10 paragraphs."))
-
 			.collectList()
 			.block()
 			.stream()

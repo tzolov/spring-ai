@@ -139,7 +139,7 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 
 		var geminiRequest = createGeminiRequest(prompt);
 
-		GenerateContentResponse response = this.chatCompletionWithTools(geminiRequest);
+		GenerateContentResponse response = this.chatCompletionWithFunctionCallSupport(geminiRequest);
 
 		List<Generation> generations = response.getCandidatesList()
 			.stream()
@@ -162,6 +162,7 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 				.generateContentStream(request.contents, request.config);
 
 			return Flux.fromStream(responseStream.stream()).map(response -> {
+				response = handleFunctionCallOrResponse(request, response);
 				List<Generation> generations = response.getCandidatesList()
 					.stream()
 					.map(candidate -> candidate.getContent().getPartsList())
@@ -411,50 +412,54 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 		return functionTools;
 	}
 
-	GenerateContentResponse chatCompletionWithTools(GeminiRequest request) {
+	GenerateContentResponse chatCompletionWithFunctionCallSupport(GeminiRequest request) {
 		try {
 			GenerateContentResponse response = request.model.generateContent(request.contents, request.config);
-
-			if (!isToolCall(response)) {
-				return response;
-			}
-
-			// message conversation history.
-			List<Content> messageConversation = new ArrayList<>(request.contents);
-
-			Content responseContent = response.getCandidatesList().get(0).getContent();
-
-			// Add the assistant response to the message conversation history.
-			messageConversation.add(responseContent);
-
-			FunctionCall functionCall = responseContent.getPartsList().iterator().next().getFunctionCall();
-
-			var functionName = functionCall.getName();
-			String functionArguments = structToJson(functionCall.getArgs());
-
-			if (!this.functionCallbackRegister.containsKey(functionName)) {
-				throw new IllegalStateException("No function callback found for function name: " + functionName);
-			}
-
-			String functionResponse = this.functionCallbackRegister.get(functionName).call(functionArguments);
-
-			Content contentFnResp = Content.newBuilder()
-				.addParts(Part.newBuilder()
-					.setFunctionResponse(FunctionResponse.newBuilder()
-						.setName(functionCall.getName())
-						.setResponse(jsonToStruct(functionResponse))
-						.build())
-					.build())
-				.build();
-
-			messageConversation.add(contentFnResp);
-
-			return this
-				.chatCompletionWithTools(new GeminiRequest(messageConversation, request.model(), request.config()));
+			return handleFunctionCallOrResponse(request, response);
 		}
 		catch (IOException e) {
 			throw new RuntimeException("Failed to generate content", e);
 		}
+	}
+
+	GenerateContentResponse handleFunctionCallOrResponse(GeminiRequest request, GenerateContentResponse response) {
+
+		if (!isToolCall(response)) {
+			return response;
+		}
+
+		// message conversation history.
+		List<Content> messageConversation = new ArrayList<>(request.contents);
+
+		Content responseContent = response.getCandidatesList().get(0).getContent();
+
+		// Add the assistant response to the message conversation history.
+		messageConversation.add(responseContent);
+
+		FunctionCall functionCall = responseContent.getPartsList().iterator().next().getFunctionCall();
+
+		var functionName = functionCall.getName();
+		String functionArguments = structToJson(functionCall.getArgs());
+
+		if (!this.functionCallbackRegister.containsKey(functionName)) {
+			throw new IllegalStateException("No function callback found for function name: " + functionName);
+		}
+
+		String functionResponse = this.functionCallbackRegister.get(functionName).call(functionArguments);
+
+		Content contentFnResp = Content.newBuilder()
+			.addParts(Part.newBuilder()
+				.setFunctionResponse(FunctionResponse.newBuilder()
+					.setName(functionCall.getName())
+					.setResponse(jsonToStruct(functionResponse))
+					.build())
+				.build())
+			.build();
+
+		messageConversation.add(contentFnResp);
+
+		return this.chatCompletionWithFunctionCallSupport(
+				new GeminiRequest(messageConversation, request.model(), request.config()));
 	}
 
 	private static String structToJson(Struct struct) {
