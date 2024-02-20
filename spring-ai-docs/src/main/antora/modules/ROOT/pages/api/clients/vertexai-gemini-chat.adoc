@@ -73,13 +73,15 @@ The prefix `spring.ai.vertex.ai.gemini.chat` is the property prefix that lets yo
 | spring.ai.vertex.ai.gemini.chat.options.maxOutputTokens | The maximum number of tokens to generate. | -
 | spring.ai.vertex.ai.gemini.chat.options.frequencyPenalty |  | -
 | spring.ai.vertex.ai.gemini.chat.options.presencePenalty |  | -
+| spring.ai.vertex.ai.gemini.chat.options.functions | List of functions, identified by their names, to enable for function calling in a single prompt requests. Functions with those names must exist in the functionCallbacks registry. | -
+
 |====
 
 TIP: All properties prefixed with `spring.ai.vertex.ai.gemini.chat.options` can be overridden at runtime by adding a request specific <<chat-options>> to the `Prompt` call.
 
 === Chat Options [[chat-options]]
 
-The https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-vertex-ai/src/main/java/org/springframework/ai/vertex/VertexAiChatOptions.java[VertexAiChatOptions.java] provides model configurations, such as the temperature, the topK, etc.
+The https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-vertex-ai/src/main/java/org/springframework/ai/vertexai/gemini/VertexAiGeminiChatOptions.java[VertexAiGeminiChatOptions.java] provides model configurations, such as the temperature, the topK, etc.
 
 On start-up, the default options can be configured with the `VertexAiGeminiChatClient(api, options)` constructor or the `spring.ai.vertex.ai.chat.options.*` properties.
 
@@ -98,6 +100,13 @@ ChatResponse response = chatClient.call(
 ----
 
 TIP: In addition to the model specific `VertexAiChatOptions` you can use a portable https://github.com/spring-projects/spring-ai/blob/main/spring-ai-core/src/main/java/org/springframework/ai/chat/ChatOptions.java[ChatOptions] instance, created with the https://github.com/spring-projects/spring-ai/blob/main/spring-ai-core/src/main/java/org/springframework/ai/chat/ChatOptionsBuilder.java[ChatOptionsBuilder#builder()].
+
+
+=== Function Calling
+
+You can register custom Java functions with the VertexAiGeminiChatClient and have the Gemini Pro model intelligently choose to output a JSON object containing arguments to call one or many of the registered functions.
+This is a powerful technique to connect the LLM capabilities with external tools and APIs.
+link:functions/vertexai-gemini-chat-functions.html[Read more about Function Calling].
 
 === Sample Controller (Auto-configuration)
 
@@ -145,7 +154,7 @@ public class ChatController {
 
 == Manual Configuration
 
-The https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-openai/src/main/java/org/springframework/ai/vertex/gemini/VertexAiGeminiChatClient.java[VertexAiGeminiChatClient] implements the `ChatClient` and uses the `VertexAI` to connect to the Vertex AI Gemini service.
+The https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-vertex-ai-gemini/src/main/java/org/springframework/ai/vertexai/gemini/VertexAiGeminiChatClient.java[VertexAiGeminiChatClient] implements the `ChatClient` and uses the `VertexAI` to connect to the Vertex AI Gemini service.
 
 Add the `spring-ai-vertex-ai-gemini` dependency to your project's Maven `pom.xml` file:
 
@@ -186,3 +195,7 @@ ChatResponse response = chatClient.call(
 
 The `VertexAiGeminiChatOptions` provides the configuration information for the chat requests.
 The `VertexAiGeminiChatOptions.Builder` is fluent options builder.
+
+=== Multi-modal
+
+https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-vertex-ai/src/test/java/org/springframework/ai/vertexai/gemini/VertexAiGeminiChatClientIT.java[VertexAiGeminiChatClientIT.java]
