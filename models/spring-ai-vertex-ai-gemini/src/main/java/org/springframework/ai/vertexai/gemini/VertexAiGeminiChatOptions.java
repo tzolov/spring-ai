@@ -16,12 +16,19 @@
 
 package org.springframework.ai.vertexai.gemini;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
 import org.springframework.ai.chat.ChatOptions;
+import org.springframework.ai.model.function.FunctionCallback;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
+import org.springframework.util.Assert;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -34,6 +41,12 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig
 
+	public enum TransportType {
+
+		GRPC, REST
+
+	}
+
 	// @formatter:off
 	/**
 	 * Optional. Stop sequences.
@@ -42,7 +55,7 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	/**
 	 * Optional. Controls the randomness of predictions.
 	 */
-	private @JsonProperty("temperature") Float temperature = 0.8f;
+	private @JsonProperty("temperature") Float temperature;
 	/**
 	 * Optional. If specified, nucleus sampling will be used.
 	 */
@@ -62,7 +75,35 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	/**
 	 * Gemini model name.
 	 */
-	private @JsonProperty("modelName") String modelName = "gemini-pro-vision";
+	private @JsonProperty("modelName") String modelName;
+
+	/**
+	 * Tool Function Callbacks to register with the ChatClient.
+	 * For Prompt Options the functionCallbacks are automatically enabled for the duration of the prompt execution.
+	 * For Default Options the functionCallbacks are registered but disabled by default. Use the enableFunctions to set the functions
+	 * from the registry to be used by the ChatClient chat completion requests.
+	 */
+	@NestedConfigurationProperty
+	@JsonIgnore
+	private List<FunctionCallback> functionCallbacks = new ArrayList<>();
+
+	/**
+	 * List of functions, identified by their names, to configure for function calling in
+	 * the chat completion requests.
+	 * Functions with those names must exist in the functionCallbacks registry.
+	 * The {@link #functionCallbacks} from the PromptOptions are automatically enabled for the duration of the prompt execution.
+	 *
+	 * Note that function enabled with the default options are enabled for all chat completion requests. This could impact the token count and the billing.
+	 * If the functions is set in a prompt options, then the enabled functions are only active for the duration of this prompt execution.
+	 */
+	@NestedConfigurationProperty
+	@JsonIgnore
+	private Set<String> functions = new HashSet<>();
+
+	/**
+	 * The transport type to use for the Gemini Chat Client.
+	 */
+	private TransportType transportType = TransportType.GRPC;
 	// @formatter:on
 
 	public static Builder builder() {
@@ -108,6 +149,28 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 			return this;
 		}
 
+		public Builder withFunctionCallbacks(List<FunctionCallback> functionCallbacks) {
+			this.options.functionCallbacks = functionCallbacks;
+			return this;
+		}
+
+		public Builder withFunctions(Set<String> functionNames) {
+			Assert.notNull(functionNames, "Function names must not be null");
+			this.options.functions = functionNames;
+			return this;
+		}
+
+		public Builder withFunction(String functionName) {
+			Assert.hasText(functionName, "Function name must not be empty");
+			this.options.functions.add(functionName);
+			return this;
+		}
+
+		public Builder withTransportType(TransportType transportType) {
+			this.options.setTransportType(transportType);
+			return this;
+		}
+
 		public VertexAiGeminiChatOptions build() {
 			return this.options;
 		}
@@ -143,6 +206,7 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	}
 
 	@Override
+	@JsonIgnore
 	public Integer getTopK() {
 		return (this.topK != null) ? this.topK.intValue() : null;
 	}
@@ -152,6 +216,7 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	}
 
 	@Override
+	@JsonIgnore
 	public void setTopK(Integer topK) {
 		this.topK = (topK != null) ? topK.floatValue() : null;
 	}
@@ -178,6 +243,30 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 
 	public void setModelName(String modelName) {
 		this.modelName = modelName;
+	}
+
+	public List<FunctionCallback> getFunctionCallbacks() {
+		return this.functionCallbacks;
+	}
+
+	public void setFunctionCallbacks(List<FunctionCallback> functionCallbacks) {
+		this.functionCallbacks = functionCallbacks;
+	}
+
+	public Set<String> getFunctions() {
+		return this.functions;
+	}
+
+	public void setFunctions(Set<String> functions) {
+		this.functions = functions;
+	}
+
+	public TransportType getTransportType() {
+		return this.transportType;
+	}
+
+	public void setTransportType(TransportType transportType) {
+		this.transportType = transportType;
 	}
 
 }

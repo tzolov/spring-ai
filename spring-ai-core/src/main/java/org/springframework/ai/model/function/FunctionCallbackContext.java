@@ -20,6 +20,7 @@ import java.util.function.Function;
 
 import com.fasterxml.jackson.annotation.JsonClassDescription;
 
+import org.springframework.ai.model.function.FunctionCallbackWrapper.Builder.SchemaType;
 import org.springframework.beans.BeansException;
 import org.springframework.cloud.function.context.catalog.FunctionTypeUtils;
 import org.springframework.cloud.function.context.config.FunctionContextUtils;
@@ -50,6 +51,12 @@ import org.springframework.util.StringUtils;
 public class FunctionCallbackContext implements ApplicationContextAware {
 
 	private GenericApplicationContext applicationContext;
+
+	private boolean vertexAiGemini = false;
+
+	public void setVertexAiGemini(boolean vertexAiGemini) {
+		this.vertexAiGemini = vertexAiGemini;
+	}
 
 	@Override
 	public void setApplicationContext(@NonNull ApplicationContext applicationContext) throws BeansException {
@@ -103,8 +110,15 @@ public class FunctionCallbackContext implements ApplicationContextAware {
 
 		Object bean = this.applicationContext.getBean(beanName);
 
+		SchemaType schemaType = vertexAiGemini ? SchemaType.OPEN_API : SchemaType.JSON;
+
 		if (bean instanceof Function<?, ?> function) {
-			return new FunctionCallbackWrapper(functionName, functionDescription, functionInputClass, function);
+			return FunctionCallbackWrapper.builder(function)
+				.withName(functionName)
+				.withSchemaType(schemaType)
+				.withDescription(functionDescription)
+				.withInputType(functionInputClass)
+				.build();
 		}
 		else {
 			throw new IllegalArgumentException("Bean must be of type Function");

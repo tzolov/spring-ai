@@ -173,9 +173,11 @@ class OpenAiChatClientIT extends AbstractIT {
 
 		var promptOptions = OpenAiChatOptions.builder()
 			.withModel("gpt-4-turbo-preview")
-			.withFunctionCallbacks(
-					List.of(new FunctionCallbackWrapper<>("getCurrentWeather", "Get the weather in location",
-							(response) -> "" + response.temp() + response.unit(), new MockWeatherService())))
+			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
+				.withName("getCurrentWeather")
+				.withDescription("Get the weather in location")
+				.withResponseConverter((response) -> "" + response.temp() + response.unit())
+				.build()))
 			.build();
 
 		ChatResponse response = openAiChatClient.call(new Prompt(messages, promptOptions));

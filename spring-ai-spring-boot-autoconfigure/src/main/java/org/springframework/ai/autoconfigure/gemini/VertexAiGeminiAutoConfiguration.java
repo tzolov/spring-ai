@@ -16,17 +16,21 @@
 
 package org.springframework.ai.autoconfigure.gemini;
 
-import java.io.IOException;
+import java.util.List;
 
 import com.google.cloud.vertexai.VertexAI;
 
 import org.springframework.ai.autoconfigure.NativeHints;
+import org.springframework.ai.model.function.FunctionCallback;
+import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportRuntimeHints;
+import org.springframework.util.CollectionUtils;
 
 /**
  * Auto-configuration for Vertex AI Gemini Chat.
@@ -47,8 +51,23 @@ public class VertexAiGeminiAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	public VertexAiGeminiChatClient vertexAiGeminiChat(VertexAI vertexAi, VertexAiGeminiChatProperties chatProperties) {
-		return new VertexAiGeminiChatClient(vertexAi, chatProperties.getOptions());
+	public VertexAiGeminiChatClient vertexAiGeminiChat(VertexAI vertexAi, VertexAiGeminiChatProperties chatProperties,
+			List<FunctionCallback> toolFunctionCallbacks, FunctionCallbackContext functionCallbackContext) {
+
+		if (!CollectionUtils.isEmpty(toolFunctionCallbacks)) {
+			chatProperties.getOptions().getFunctionCallbacks().addAll(toolFunctionCallbacks);
+		}
+
+		return new VertexAiGeminiChatClient(vertexAi, chatProperties.getOptions(), functionCallbackContext);
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	public FunctionCallbackContext springAiFunctionManager(ApplicationContext context) {
+		FunctionCallbackContext manager = new FunctionCallbackContext();
+		manager.setVertexAiGemini(true);
+		manager.setApplicationContext(context);
+		return manager;
 	}
 
 }

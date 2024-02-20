@@ -38,6 +38,7 @@ import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.parser.BeanOutputParser;
 import org.springframework.ai.parser.ListOutputParser;
 import org.springframework.ai.parser.MapOutputParser;
+import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatOptions.TransportType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringBootConfiguration;
@@ -53,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @EnabledIfEnvironmentVariable(named = "VERTEX_AI_GEMINI_PROJECT_ID", matches = ".*")
 @EnabledIfEnvironmentVariable(named = "VERTEX_AI_GEMINI_LOCATION", matches = ".*")
-class VertexAiGeminiChatGenerationClientIT {
+class VertexAiGeminiChatClientIT {
 
 	@Autowired
 	private VertexAiGeminiChatClient client;
@@ -137,6 +138,24 @@ class VertexAiGeminiChatGenerationClientIT {
 	}
 
 	@Test
+	void textStream() {
+
+		String generationTextFromStream = client.stream(new Prompt("Explain Bulgaria? Answer in 10 paragraphs."))
+
+			.collectList()
+			.block()
+			.stream()
+			.map(ChatResponse::getResults)
+			.flatMap(List::stream)
+			.map(Generation::getOutput)
+			.map(AssistantMessage::getContent)
+			.collect(Collectors.joining());
+
+		// logger.info("" + actorsFilms);
+		assertThat(generationTextFromStream).isNotEmpty();
+	}
+
+	@Test
 	void beanStreamOutputParserRecords() {
 
 		BeanOutputParser<ActorsFilmsRecord> outputParser = new BeanOutputParser<>(ActorsFilmsRecord.class);
@@ -212,7 +231,11 @@ class VertexAiGeminiChatGenerationClientIT {
 
 		@Bean
 		public VertexAiGeminiChatClient vertexAiEmbedding(VertexAI vertexAi) {
-			return new VertexAiGeminiChatClient(vertexAi);
+			return new VertexAiGeminiChatClient(vertexAi,
+					VertexAiGeminiChatOptions.builder()
+						.withModelName("gemini-pro-vision")
+						.withTransportType(TransportType.REST)
+						.build());
 		}
 
 	}
