@@ -52,9 +52,10 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 	private VertexAiGeminiChatClient vertexGeminiClient;
 
 	@Test
-	public void functionCallTest() {
+	public void functionCallExplicitOpenApiSchema() {
 
-		UserMessage userMessage = new UserMessage("What's the weather like in San Francisco, Paris and Tokyo?");
+		UserMessage userMessage = new UserMessage(
+				"What's the weather like in San Francisco, in Paris and in Tokyo? Use Multi-turn function calling.");
 
 		List<Message> messages = new ArrayList<>(List.of(userMessage));
 
@@ -66,9 +67,10 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 						"type": "STRING",
 						"description": "The city and state e.g. San Francisco, CA"
 					  },
-					  "unit": {
-						"type": "STRING",
-						"description": "Temperature unit, e.g. C or F"
+					  "unit" : {
+						"type" : "STRING",
+						"enum" : [ "C", "F" ],
+						"description" : "Temperature unit"
 					  }
 					},
 					"required": ["location", "unit"]
@@ -96,7 +98,7 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 	}
 
 	@Test
-	public void functionCallTest2() {
+	public void functionCallTestInferredOpenApiSchema() {
 
 		// UserMessage userMessage = new UserMessage("What's the weather like in San
 		// Francisco, Paris and Tokyo?");
