@@ -101,12 +101,12 @@ ChatResponse response = chatClient.call(
 
 TIP: In addition to the model specific `VertexAiChatOptions` you can use a portable https://github.com/spring-projects/spring-ai/blob/main/spring-ai-core/src/main/java/org/springframework/ai/chat/ChatOptions.java[ChatOptions] instance, created with the https://github.com/spring-projects/spring-ai/blob/main/spring-ai-core/src/main/java/org/springframework/ai/chat/ChatOptionsBuilder.java[ChatOptionsBuilder#builder()].
 
-
 === Function Calling
 
 You can register custom Java functions with the VertexAiGeminiChatClient and have the Gemini Pro model intelligently choose to output a JSON object containing arguments to call one or many of the registered functions.
 This is a powerful technique to connect the LLM capabilities with external tools and APIs.
-link:functions/vertexai-gemini-chat-functions.html[Read more about Function Calling].
+Read more about xref:api/clients/functions/vertexai-gemini-chat-functions.adoc[Vertex AI Gemini Function Calling].
+
 
 === Sample Controller (Auto-configuration)
 
