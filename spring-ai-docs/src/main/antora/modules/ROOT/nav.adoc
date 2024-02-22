@@ -16,6 +16,7 @@
 *** xref:api/clients/openai-chat.adoc[]
 **** xref:api/clients/functions/openai-chat-functions.adoc[]
 *** xref:api/clients/azure-openai-chat.adoc[]
+**** xref:api/clients/functions/azure-open-ai-chat-functions.adoc[]
 *** xref:api/clients/ollama-chat.adoc[]
 *** xref:api/bedrock-chat.adoc[Amazon Bedrock Chat]
 **** xref:api/clients/bedrock/bedrock-anthropic.adoc[]
@@ -46,4 +47,4 @@
 ** xref:api/generic-model.adoc[]
 * xref:contribution-guidelines.adoc[Contribution Guidelines]
 * Appendices
-** xref:upgrade-notes.adoc[]]
+** xref:upgrade-notes.adoc[]
