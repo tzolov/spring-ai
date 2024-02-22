@@ -232,7 +232,7 @@ class VertexAiGeminiChatClientIT {
 		public VertexAiGeminiChatClient vertexAiEmbedding(VertexAI vertexAi) {
 			return new VertexAiGeminiChatClient(vertexAi,
 					VertexAiGeminiChatOptions.builder()
-						.withModelName("gemini-pro-vision")
+						.withModel("gemini-pro-vision")
 						.withTransportType(TransportType.REST)
 						.build());
 		}

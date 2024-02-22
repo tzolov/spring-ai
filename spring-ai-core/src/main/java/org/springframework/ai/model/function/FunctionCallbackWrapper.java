@@ -45,7 +45,7 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 
 		public enum SchemaType {
 
-			JSON, OPEN_API
+			JSON_SCHEMA, OPEN_API_SCHEMA
 
 		}
 
@@ -57,7 +57,7 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 
 		private final Function<I, O> function;
 
-		private SchemaType schemaType = SchemaType.JSON;
+		private SchemaType schemaType = SchemaType.JSON_SCHEMA;
 
 		public Builder(Function<I, O> function) {
 			Assert.notNull(function, "Function must not be null");
@@ -128,7 +128,7 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 			}
 
 			if (this.inputTypeSchema == null) {
-				boolean upperCaseTypeValues = this.schemaType == SchemaType.OPEN_API;
+				boolean upperCaseTypeValues = this.schemaType == SchemaType.OPEN_API_SCHEMA;
 				this.inputTypeSchema = ModelOptionsUtils.getJsonSchema(this.inputType, upperCaseTypeValues);
 			}
 

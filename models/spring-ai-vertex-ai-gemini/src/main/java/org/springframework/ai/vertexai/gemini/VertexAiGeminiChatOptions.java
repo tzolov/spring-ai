@@ -24,20 +24,19 @@ import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.model.function.FunctionCallback;
+import org.springframework.ai.model.function.FunctionChatOptions;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.util.Assert;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * @author Christian Tzolov
  * @since 0.8.1
  */
 @JsonInclude(Include.NON_NULL)
-public class VertexAiGeminiChatOptions implements ChatOptions {
+public class VertexAiGeminiChatOptions implements FunctionChatOptions {
 
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig
 
@@ -75,7 +74,7 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 	/**
 	 * Gemini model name.
 	 */
-	private @JsonProperty("modelName") String modelName;
+	private @JsonProperty("modelName") String model;
 
 	/**
 	 * Tool Function Callbacks to register with the ChatClient.
@@ -144,8 +143,8 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 			return this;
 		}
 
-		public Builder withModelName(String modelName) {
-			this.options.setModelName(modelName);
+		public Builder withModel(String modelName) {
+			this.options.setModel(modelName);
 			return this;
 		}
 
@@ -237,12 +236,12 @@ public class VertexAiGeminiChatOptions implements ChatOptions {
 		this.maxOutputTokens = maxOutputTokens;
 	}
 
-	public String getModelName() {
-		return this.modelName;
+	public String getModel() {
+		return this.model;
 	}
 
-	public void setModelName(String modelName) {
-		this.modelName = modelName;
+	public void setModel(String modelName) {
+		this.model = modelName;
 	}
 
 	public List<FunctionCallback> getFunctionCallbacks() {

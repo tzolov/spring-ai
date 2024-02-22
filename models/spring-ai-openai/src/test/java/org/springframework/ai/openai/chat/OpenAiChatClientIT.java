@@ -187,7 +187,6 @@ class OpenAiChatClientIT extends AbstractIT {
 		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("30.0", "30");
 		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("10.0", "10");
 		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("15.0", "15");
-
 	}
 
 }

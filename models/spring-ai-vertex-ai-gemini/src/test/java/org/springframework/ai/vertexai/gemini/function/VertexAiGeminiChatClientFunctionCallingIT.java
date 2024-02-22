@@ -82,7 +82,7 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 					""";
 
 		var promptOptions = VertexAiGeminiChatOptions.builder()
-			.withModelName("gemini-pro")
+			.withModel("gemini-pro")
 			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
 				.withName("getCurrentWeather")
 				.withDescription("Get the current weather in a given location")
@@ -111,9 +111,9 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 		List<Message> messages = new ArrayList<>(List.of(userMessage));
 
 		var promptOptions = VertexAiGeminiChatOptions.builder()
-			.withModelName("gemini-pro")
+			.withModel("gemini-pro")
 			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
-				.withSchemaType(SchemaType.OPEN_API)
+				.withSchemaType(SchemaType.OPEN_API_SCHEMA)
 				.withName("getCurrentWeather")
 				.withDescription("Get the current weather in a given location")
 				.build()))
@@ -141,9 +141,9 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 		List<Message> messages = new ArrayList<>(List.of(userMessage));
 
 		var promptOptions = VertexAiGeminiChatOptions.builder()
-			.withModelName("gemini-pro")
+			.withModel("gemini-pro")
 			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
-				.withSchemaType(SchemaType.OPEN_API)
+				.withSchemaType(SchemaType.OPEN_API_SCHEMA)
 				.withName("getCurrentWeather")
 				.withDescription("Get the current weather in a given location")
 				.build()))
@@ -182,7 +182,7 @@ public class VertexAiGeminiChatClientFunctionCallingIT {
 		public VertexAiGeminiChatClient vertexAiEmbedding(VertexAI vertexAi) {
 			return new VertexAiGeminiChatClient(vertexAi,
 					VertexAiGeminiChatOptions.builder()
-						.withModelName("gemini-pro")
+						.withModel("gemini-pro")
 						.withTransportType(TransportType.GRPC)
 						.build());
 		}

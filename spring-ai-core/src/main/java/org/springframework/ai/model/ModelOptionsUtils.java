@@ -72,6 +72,23 @@ public final class ModelOptionsUtils {
 	}
 
 	/**
+	 * Converts the given JSON string to a Map of String and Object.
+	 * @param json the JSON string to convert to a Map.
+	 * @return the converted Map.
+	 */
+	public static Map<String, Object> jsonToMap(String json) {
+		try {
+			return OBJECT_MAPPER.readValue(json, MAP_TYPE_REF);
+		}
+		catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private static TypeReference<HashMap<String, Object>> MAP_TYPE_REF = new TypeReference<HashMap<String, Object>>() {
+	};
+
+	/**
 	 * Converts the given object to a JSON string.
 	 * @param object the object to convert to a JSON string.
 	 * @return the JSON string.

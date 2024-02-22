@@ -52,10 +52,10 @@ public class FunctionCallbackContext implements ApplicationContextAware {
 
 	private GenericApplicationContext applicationContext;
 
-	private boolean vertexAiGemini = false;
+	private SchemaType schemaType = SchemaType.JSON_SCHEMA;
 
-	public void setVertexAiGemini(boolean vertexAiGemini) {
-		this.vertexAiGemini = vertexAiGemini;
+	public void setSchemaType(SchemaType schemaType) {
+		this.schemaType = schemaType;
 	}
 
 	@Override
@@ -110,12 +110,10 @@ public class FunctionCallbackContext implements ApplicationContextAware {
 
 		Object bean = this.applicationContext.getBean(beanName);
 
-		SchemaType schemaType = vertexAiGemini ? SchemaType.OPEN_API : SchemaType.JSON;
-
 		if (bean instanceof Function<?, ?> function) {
 			return FunctionCallbackWrapper.builder(function)
 				.withName(functionName)
-				.withSchemaType(schemaType)
+				.withSchemaType(this.schemaType)
 				.withDescription(functionDescription)
 				.withInputType(functionInputClass)
 				.build();

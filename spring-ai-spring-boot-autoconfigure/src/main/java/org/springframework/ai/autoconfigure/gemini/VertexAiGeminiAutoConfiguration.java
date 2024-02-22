@@ -22,6 +22,7 @@ import com.google.cloud.vertexai.VertexAI;
 
 import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
+import org.springframework.ai.model.function.FunctionCallbackWrapper.Builder.SchemaType;
 import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -62,7 +63,7 @@ public class VertexAiGeminiAutoConfiguration {
 	@ConditionalOnMissingBean
 	public FunctionCallbackContext springAiFunctionManager(ApplicationContext context) {
 		FunctionCallbackContext manager = new FunctionCallbackContext();
-		manager.setVertexAiGemini(true);
+		manager.setSchemaType(SchemaType.OPEN_API_SCHEMA);
 		manager.setApplicationContext(context);
 		return manager;
 	}

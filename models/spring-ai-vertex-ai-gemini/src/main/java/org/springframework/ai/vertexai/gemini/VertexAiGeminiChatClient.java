@@ -20,9 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import com.google.cloud.vertexai.Transport;
@@ -54,7 +52,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.ModelOptionsUtils;
-import org.springframework.ai.model.function.FunctionCallback;
+import org.springframework.ai.model.function.AbstractFunctionCallSupport;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.vertexai.gemini.metadata.VertexAiChatResponseMetadata;
 import org.springframework.ai.vertexai.gemini.metadata.VertexAiUsage;
@@ -68,7 +66,9 @@ import org.springframework.util.StringUtils;
  * @author Christian Tzolov
  * @since 0.8.1
  */
-public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient, DisposableBean {
+public class VertexAiGeminiChatClient
+		extends AbstractFunctionCallSupport<Content, VertexAiGeminiChatClient.GeminiRequest, GenerateContentResponse>
+		implements ChatClient, StreamingChatClient, DisposableBean {
 
 	private final static boolean IS_RUNTIME_CALL = true;
 
@@ -79,18 +79,6 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 	private final GenerationConfig generationConfig;
 
 	private GenerativeModel generativeModel;
-
-	/**
-	 * The function callback register is used to resolve the function callbacks by name.
-	 */
-	private Map<String, FunctionCallback> functionCallbackRegister = new ConcurrentHashMap<>();
-
-	/**
-	 * The function callback context is used to resolve the function callbacks by name
-	 * from the Spring context. It is optional and usually used with Spring
-	 * auto-configuration.
-	 */
-	private FunctionCallbackContext functionCallbackContext;
 
 	public enum GeminiMessageType {
 
@@ -112,7 +100,7 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 
 	public VertexAiGeminiChatClient(VertexAI vertexAI) {
 		this(vertexAI,
-				VertexAiGeminiChatOptions.builder().withModelName("gemini-pro-vision").withTemperature(0.8f).build());
+				VertexAiGeminiChatOptions.builder().withModel("gemini-pro-vision").withTemperature(0.8f).build());
 	}
 
 	public VertexAiGeminiChatClient(VertexAI vertexAI, VertexAiGeminiChatOptions options) {
@@ -122,15 +110,16 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 	public VertexAiGeminiChatClient(VertexAI vertexAI, VertexAiGeminiChatOptions options,
 			FunctionCallbackContext functionCallbackContext) {
 
+		super(functionCallbackContext);
+
 		Assert.notNull(vertexAI, "VertexAI must not be null");
 		Assert.notNull(options, "VertexAiGeminiChatOptions must not be null");
-		Assert.notNull(options.getModelName(), "VertexAiGeminiChatOptions.modelName must not be null");
+		Assert.notNull(options.getModel(), "VertexAiGeminiChatOptions.modelName must not be null");
 
 		this.vertexAI = vertexAI;
 		this.defaultOptions = options;
 		this.generationConfig = toGenerationConfig(options);
-		this.generativeModel = new GenerativeModel(options.getModelName(), vertexAI);
-		this.functionCallbackContext = functionCallbackContext;
+		this.generativeModel = new GenerativeModel(options.getModel(), vertexAI);
 	}
 
 	// https://cloud.google.com/vertex-ai/docs/generative-ai/model-reference/gemini
@@ -139,7 +128,9 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 
 		var geminiRequest = createGeminiRequest(prompt);
 
-		GenerateContentResponse response = this.chatCompletionWithFunctionCallSupport(geminiRequest);
+		// GenerateContentResponse response =
+		// this.chatCompletionWithFunctionCallSupport(geminiRequest);
+		GenerateContentResponse response = this.callWithFunctionSupport(geminiRequest);
 
 		List<Generation> generations = response.getCandidatesList()
 			.stream()
@@ -162,7 +153,7 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 				.generateContentStream(request.contents, request.config);
 
 			return Flux.fromStream(responseStream.stream()).map(response -> {
-				response = handleFunctionCallOrResponse(request, response);
+				response = handleFunctionCallOrReturn(request, response);
 				List<Generation> generations = response.getCandidatesList()
 					.stream()
 					.map(candidate -> candidate.getContent().getPartsList())
@@ -183,7 +174,7 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 		return new VertexAiChatResponseMetadata(new VertexAiUsage(response.getUsageMetadata()));
 	}
 
-	private record GeminiRequest(List<Content> contents, GenerativeModel model, GenerationConfig config) {
+	public record GeminiRequest(List<Content> contents, GenerativeModel model, GenerationConfig config) {
 	}
 
 	private GeminiRequest createGeminiRequest(Prompt prompt) {
@@ -224,9 +215,9 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 
 		if (updatedRuntimeOptions != null) {
 
-			if (StringUtils.hasText(updatedRuntimeOptions.getModelName())
-					&& !updatedRuntimeOptions.getModelName().equals(this.defaultOptions.getModelName())) {
-				generativeModel = new GenerativeModel(updatedRuntimeOptions.getModelName(), vertexAI);
+			if (StringUtils.hasText(updatedRuntimeOptions.getModel())
+					&& !updatedRuntimeOptions.getModel().equals(this.defaultOptions.getModel())) {
+				generativeModel = new GenerativeModel(updatedRuntimeOptions.getModel(), vertexAI);
 			}
 
 			if (updatedRuntimeOptions.getTransportType() != null) {
@@ -340,63 +331,9 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 		}
 	}
 
-	// Function Calling Support
-	private Set<String> handleFunctionCallbackConfigurations(VertexAiGeminiChatOptions options, boolean isRuntimeCall) {
-
-		Set<String> functionToCall = new HashSet<>();
-
-		if (options != null) {
-			if (!CollectionUtils.isEmpty(options.getFunctionCallbacks())) {
-				options.getFunctionCallbacks().stream().forEach(functionCallback -> {
-
-					// Register the tool callback.
-					if (isRuntimeCall) {
-						this.functionCallbackRegister.put(functionCallback.getName(), functionCallback);
-					}
-					else {
-						this.functionCallbackRegister.putIfAbsent(functionCallback.getName(), functionCallback);
-					}
-
-					// Automatically enable the function, usually from prompt callback.
-					if (isRuntimeCall) {
-						functionToCall.add(functionCallback.getName());
-					}
-				});
-			}
-
-			// Add the explicitly enabled functions.
-			if (!CollectionUtils.isEmpty(options.getFunctions())) {
-				functionToCall.addAll(options.getFunctions());
-			}
-		}
-
-		return functionToCall;
-	}
-
 	private List<Tool> getFunctionTools(Set<String> functionNames) {
 
-		List<Tool> functionTools = new ArrayList<>();
-
-		for (String functionName : functionNames) {
-			if (!this.functionCallbackRegister.containsKey(functionName)) {
-
-				if (this.functionCallbackContext != null) {
-					FunctionCallback functionCallback = this.functionCallbackContext.getFunctionCallback(functionName,
-							null);
-					if (functionCallback != null) {
-						this.functionCallbackRegister.put(functionName, functionCallback);
-					}
-					else {
-						throw new IllegalStateException(
-								"No function callback [" + functionName + "] fund in tht FunctionCallbackContext");
-					}
-				}
-				else {
-					throw new IllegalStateException("No function callback found for name: " + functionName);
-				}
-			}
-			FunctionCallback functionCallback = this.functionCallbackRegister.get(functionName);
-
+		return this.resolveFunctionCallbacks(functionNames).stream().map(functionCallback -> {
 			FunctionDeclaration functionDeclaration = FunctionDeclaration.newBuilder()
 				.setName(functionCallback.getName())
 				.setDescription(functionCallback.getDescription())
@@ -404,39 +341,122 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 				// .setParameters(toOpenApiSchema(functionCallback.getInputTypeSchema()))
 				.build();
 
-			Tool tool = Tool.newBuilder().addFunctionDeclarations(functionDeclaration).build();
-
-			functionTools.add(tool);
-		}
-
-		return functionTools;
+			return Tool.newBuilder().addFunctionDeclarations(functionDeclaration).build();
+		}).toList();
 	}
 
-	GenerateContentResponse chatCompletionWithFunctionCallSupport(GeminiRequest request) {
+	// GenerateContentResponse chatCompletionWithFunctionCallSupport(GeminiRequest
+	// request) {
+	// try {
+	// GenerateContentResponse response = request.model.generateContent(request.contents,
+	// request.config);
+	// return handleFunctionCallOrReturn(request, response);
+	// }
+	// catch (IOException e) {
+	// throw new RuntimeException("Failed to generate content", e);
+	// }
+	// }
+
+	// GenerateContentResponse handleFunctionCallOrReturn(GeminiRequest request,
+	// GenerateContentResponse response) {
+
+	// if (!isToolCall(response)) {
+	// return response;
+	// }
+
+	// // message conversation history.
+	// List<Content> messageConversation = new ArrayList<>(request.contents);
+
+	// Content responseContent = response.getCandidatesList().get(0).getContent();
+
+	// // Add the assistant response to the message conversation history.
+	// messageConversation.add(responseContent);
+
+	// FunctionCall functionCall =
+	// responseContent.getPartsList().iterator().next().getFunctionCall();
+
+	// var functionName = functionCall.getName();
+	// String functionArguments = structToJson(functionCall.getArgs());
+
+	// if (!this.functionCallbackRegister.containsKey(functionName)) {
+	// throw new IllegalStateException("No function callback found for function name: " +
+	// functionName);
+	// }
+
+	// String functionResponse =
+	// this.functionCallbackRegister.get(functionName).call(functionArguments);
+
+	// Content contentFnResp = Content.newBuilder()
+	// .addParts(Part.newBuilder()
+	// .setFunctionResponse(FunctionResponse.newBuilder()
+	// .setName(functionCall.getName())
+	// .setResponse(jsonToStruct(functionResponse))
+	// .build())
+	// .build())
+	// .build();
+
+	// messageConversation.add(contentFnResp);
+
+	// return this.chatCompletionWithFunctionCallSupport(
+	// new GeminiRequest(messageConversation, request.model(), request.config()));
+	// }
+
+	private static String structToJson(Struct struct) {
 		try {
-			GenerateContentResponse response = request.model.generateContent(request.contents, request.config);
-			return handleFunctionCallOrResponse(request, response);
+			return JsonFormat.printer().print(struct);
 		}
-		catch (IOException e) {
-			throw new RuntimeException("Failed to generate content", e);
+		catch (Exception e) {
+			throw new RuntimeException(e);
 		}
 	}
 
-	GenerateContentResponse handleFunctionCallOrResponse(GeminiRequest request, GenerateContentResponse response) {
-
-		if (!isToolCall(response)) {
-			return response;
+	private static Struct jsonToStruct(String json) {
+		try {
+			var structBuilder = Struct.newBuilder();
+			JsonFormat.parser().ignoringUnknownFields().merge(json, structBuilder);
+			return structBuilder.build();
 		}
+		catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
 
-		// message conversation history.
-		List<Content> messageConversation = new ArrayList<>(request.contents);
+	private static Schema jsonToSchema(String json) {
+		try {
+			var schemaBuilder = Schema.newBuilder();
+			JsonFormat.parser().ignoringUnknownFields().merge(json, schemaBuilder);
+			return schemaBuilder.build();
+		}
+		catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
 
-		Content responseContent = response.getCandidatesList().get(0).getContent();
+	// private Boolean isToolCall(GenerateContentResponse response) {
 
-		// Add the assistant response to the message conversation history.
-		messageConversation.add(responseContent);
+	// if (response == null || CollectionUtils.isEmpty(response.getCandidatesList())
+	// || response.getCandidatesList().get(0).getContent() == null
+	// ||
+	// CollectionUtils.isEmpty(response.getCandidatesList().get(0).getContent().getPartsList()))
+	// {
+	// return false;
+	// }
+	// return
+	// response.getCandidatesList().get(0).getContent().getPartsList().get(0).hasFunctionCall();
+	// }
 
-		FunctionCall functionCall = responseContent.getPartsList().iterator().next().getFunctionCall();
+	@Override
+	public void destroy() throws Exception {
+		if (this.vertexAI != null) {
+			this.vertexAI.close();
+		}
+	}
+
+	@Override
+	protected GeminiRequest doCreateToolResponseRequest(GeminiRequest previousRequest, Content responseMessage,
+			List<Content> conversationHistory) {
+
+		FunctionCall functionCall = responseMessage.getPartsList().iterator().next().getFunctionCall();
 
 		var functionName = functionCall.getName();
 		String functionArguments = structToJson(functionCall.getArgs());
@@ -456,63 +476,39 @@ public class VertexAiGeminiChatClient implements ChatClient, StreamingChatClient
 				.build())
 			.build();
 
-		messageConversation.add(contentFnResp);
+		conversationHistory.add(contentFnResp);
 
-		return this.chatCompletionWithFunctionCallSupport(
-				new GeminiRequest(messageConversation, request.model(), request.config()));
+		return new GeminiRequest(conversationHistory, previousRequest.model(), previousRequest.config());
 	}
 
-	private static String structToJson(Struct struct) {
+	@Override
+	protected List<Content> doGetUserMessages(GeminiRequest request) {
+		return request.contents;
+	}
+
+	@Override
+	protected Content doGetToolResponseMessage(GenerateContentResponse response) {
+		return response.getCandidatesList().get(0).getContent();
+	}
+
+	@Override
+	protected GenerateContentResponse doChatCompletion(GeminiRequest request) {
 		try {
-			String json = JsonFormat.printer().print(struct);
-			// Map<String, Object> metadata = new ObjectMapper() .readValue(json,
-			// Map.class);
-			return json;
+			return request.model.generateContent(request.contents, request.config);
 		}
-		catch (Exception e) {
-			throw new RuntimeException(e);
+		catch (IOException e) {
+			throw new RuntimeException("Failed to generate content", e);
 		}
 	}
 
-	private static Struct jsonToStruct(String json) {
-		try {
-			var structBuilder = Struct.newBuilder();
-			JsonFormat.parser().ignoringUnknownFields().merge(json, structBuilder);
-			var filterStruct = structBuilder.build();
-			return filterStruct;
-		}
-		catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	private static Schema jsonToSchema(String json) {
-		try {
-			var schemaBuilder = Schema.newBuilder();
-			JsonFormat.parser().ignoringUnknownFields().merge(json, schemaBuilder);
-			var filterStruct = schemaBuilder.build();
-			return filterStruct;
-		}
-		catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	private Boolean isToolCall(GenerateContentResponse response) {
-
+	@Override
+	protected boolean isToolFunctionCall(GenerateContentResponse response) {
 		if (response == null || CollectionUtils.isEmpty(response.getCandidatesList())
 				|| response.getCandidatesList().get(0).getContent() == null
 				|| CollectionUtils.isEmpty(response.getCandidatesList().get(0).getContent().getPartsList())) {
 			return false;
 		}
 		return response.getCandidatesList().get(0).getContent().getPartsList().get(0).hasFunctionCall();
-	}
-
-	@Override
-	public void destroy() throws Exception {
-		if (this.vertexAI != null) {
-			this.vertexAI.close();
-		}
 	}
 
 }
