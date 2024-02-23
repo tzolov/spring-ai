@@ -16,8 +16,10 @@
 
 package org.springframework.ai.autoconfigure.gemini;
 
+import java.io.IOException;
 import java.util.List;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.vertexai.VertexAI;
 
 import org.springframework.ai.model.function.FunctionCallback;
@@ -43,8 +45,16 @@ public class VertexAiGeminiAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	public VertexAI vertexAi(VertexAiGeminiConnectionProperties connectionProperties) {
-		return new VertexAI(connectionProperties.getProjectId(), connectionProperties.getLocation());
+	public VertexAI vertexAi(VertexAiGeminiConnectionProperties connectionProperties) throws IOException {
+
+		if (connectionProperties.getCredentialsUri() != null) {
+			GoogleCredentials credentials = GoogleCredentials
+				.fromStream(connectionProperties.getCredentialsUri().getInputStream());
+			return new VertexAI(connectionProperties.getProjectId(), connectionProperties.getLocation(), credentials);
+		}
+		else {
+			return new VertexAI(connectionProperties.getProjectId(), connectionProperties.getLocation());
+		}
 	}
 
 	@Bean

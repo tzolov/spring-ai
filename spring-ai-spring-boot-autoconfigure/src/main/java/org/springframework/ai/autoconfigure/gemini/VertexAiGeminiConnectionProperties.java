@@ -17,6 +17,7 @@
 package org.springframework.ai.autoconfigure.gemini;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.core.io.Resource;
 
 /**
  * Configuration properties for Vertex AI Gemini Chat.
@@ -39,6 +40,11 @@ public class VertexAiGeminiConnectionProperties {
 	 */
 	private String location;
 
+	/**
+	 * URI to Vertex AI Gemini credentials (optional)
+	 */
+	private Resource credentialsUri;
+
 	public String getProjectId() {
 		return this.projectId;
 	}
@@ -53,6 +59,14 @@ public class VertexAiGeminiConnectionProperties {
 
 	public void setLocation(String location) {
 		this.location = location;
+	}
+
+	public Resource getCredentialsUri() {
+		return this.credentialsUri;
+	}
+
+	public void setCredentialsUri(Resource credentialsUri) {
+		this.credentialsUri = credentialsUri;
 	}
 
 }
