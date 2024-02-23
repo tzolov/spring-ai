@@ -31,7 +31,6 @@ To enable it add the following dependency to your project's Maven `pom.xml` file
 <dependency>
     <groupId>org.springframework.ai</groupId>
     <artifactId>spring-ai-vertex-ai-gemini-spring-boot-starter</artifactId>
-    <version>0.8.0-SNAPSHOT</version>
 </dependency>
 ----
 
@@ -40,11 +39,11 @@ or to your Gradle `build.gradle` build file.
 [source,groovy]
 ----
 dependencies {
-    implementation 'org.springframework.ai:spring-ai-vertex-ai-gemini-spring-boot-starter:0.8.0-SNAPSHOT'
+    implementation 'org.springframework.ai:spring-ai-vertex-ai-gemini-spring-boot-starter'
 }
 ----
 
-TIP: Refer to the xref:getting-started.adoc#_dependency_management[Dependency Management] section to add Milestone and/or Snapshot Repositories to your build file.
+TIP: Refer to the xref:getting-started.adoc#dependency-management[Dependency Management] section to add the Spring AI BOM to your build file.
 
 === Chat Properties
 
@@ -56,6 +55,7 @@ The prefix `spring.ai.vertex.ai.gemini` is used as the property prefix that lets
 
 | spring.ai.vertex.ai.gemini.projectId   | Google Cloud Platform project ID |  -
 | spring.ai.vertex.ai.gemini.location    | Region           |  -
+| spring.ai.vertex.ai.gemini.credentialsUri    | URI to Vertex AI Gemini credentials. When provided it is used to create an a `GoogleCredentials` instance to authenticate the `VertexAI`. |  -
 |====
 
 The prefix `spring.ai.vertex.ai.gemini.chat` is the property prefix that lets you configure the chat client implementation for VertexAI Gemini Chat.
@@ -163,7 +163,6 @@ Add the `spring-ai-vertex-ai-gemini` dependency to your project's Maven `pom.xml
 <dependency>
     <groupId>org.springframework.ai</groupId>
     <artifactId>spring-ai-vertex-ai-gemini</artifactId>
-    <version>0.8.0-SNAPSHOT</version>
 </dependency>
 ----
 
@@ -172,11 +171,11 @@ or to your Gradle `build.gradle` build file.
 [source,groovy]
 ----
 dependencies {
-    implementation 'org.springframework.ai:spring-ai-vertex-ai-gemini:0.8.0-SNAPSHOT'
+    implementation 'org.springframework.ai:spring-ai-vertex-ai-gemini'
 }
 ----
 
-TIP: Refer to the xref:getting-started.adoc#_dependency_management[Dependency Management] section to add Milestone and/or Snapshot Repositories to your build file.
+TIP: Refer to the xref:getting-started.adoc#dependency-management[Dependency Management] section to add the Spring AI BOM to your build file.
 
 Next, create a `VertexAiGeminiChatClient` and use it for text generations:
 
