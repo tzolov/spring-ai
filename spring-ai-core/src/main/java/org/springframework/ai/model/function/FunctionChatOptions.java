@@ -57,4 +57,12 @@ public interface FunctionChatOptions extends ChatOptions {
 	 */
 	void setFunctions(Set<String> functions);
 
+	/**
+	 * @return Returns FunctionChatOptionsBuilder to create a new instance of
+	 * FunctionChatOptions.
+	 */
+	public static FunctionChatOptionsBuilder builder() {
+		return new FunctionChatOptionsBuilder();
+	}
+
 }
