@@ -119,16 +119,6 @@ public class OpenAiChatClient extends
 		this.defaultOptions = options;
 	}
 
-	/**
-	 * @deprecated since 0.8.0, use the
-	 * {@link #OpenAiChatClient2(OpenAiApi, OpenAiChatOptions)} constructor instead.
-	 */
-	@Deprecated(since = "0.8.0", forRemoval = true)
-	public OpenAiChatClient withDefaultOptions(OpenAiChatOptions options) {
-		this.defaultOptions = options;
-		return this;
-	}
-
 	@Override
 	public ChatResponse call(Prompt prompt) {
 
