@@ -16,13 +16,14 @@
 
 package org.springframework.ai.vertexai.gemini;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.google.cloud.vertexai.Transport;
 import com.google.cloud.vertexai.VertexAI;
 import com.google.cloud.vertexai.api.Content;
@@ -165,7 +166,7 @@ public class VertexAiGeminiChatClient
 				return new ChatResponse(generations, toChatResponseMetadata(response));
 			});
 		}
-		catch (IOException e) {
+		catch (Exception e) {
 			throw new RuntimeException("Failed to generate content", e);
 		}
 	}
@@ -174,6 +175,7 @@ public class VertexAiGeminiChatClient
 		return new VertexAiChatResponseMetadata(new VertexAiUsage(response.getUsageMetadata()));
 	}
 
+	@JsonInclude(Include.NON_NULL)
 	public record GeminiRequest(List<Content> contents, GenerativeModel model, GenerationConfig config) {
 	}
 
@@ -345,62 +347,6 @@ public class VertexAiGeminiChatClient
 		}).toList();
 	}
 
-	// GenerateContentResponse chatCompletionWithFunctionCallSupport(GeminiRequest
-	// request) {
-	// try {
-	// GenerateContentResponse response = request.model.generateContent(request.contents,
-	// request.config);
-	// return handleFunctionCallOrReturn(request, response);
-	// }
-	// catch (IOException e) {
-	// throw new RuntimeException("Failed to generate content", e);
-	// }
-	// }
-
-	// GenerateContentResponse handleFunctionCallOrReturn(GeminiRequest request,
-	// GenerateContentResponse response) {
-
-	// if (!isToolCall(response)) {
-	// return response;
-	// }
-
-	// // message conversation history.
-	// List<Content> messageConversation = new ArrayList<>(request.contents);
-
-	// Content responseContent = response.getCandidatesList().get(0).getContent();
-
-	// // Add the assistant response to the message conversation history.
-	// messageConversation.add(responseContent);
-
-	// FunctionCall functionCall =
-	// responseContent.getPartsList().iterator().next().getFunctionCall();
-
-	// var functionName = functionCall.getName();
-	// String functionArguments = structToJson(functionCall.getArgs());
-
-	// if (!this.functionCallbackRegister.containsKey(functionName)) {
-	// throw new IllegalStateException("No function callback found for function name: " +
-	// functionName);
-	// }
-
-	// String functionResponse =
-	// this.functionCallbackRegister.get(functionName).call(functionArguments);
-
-	// Content contentFnResp = Content.newBuilder()
-	// .addParts(Part.newBuilder()
-	// .setFunctionResponse(FunctionResponse.newBuilder()
-	// .setName(functionCall.getName())
-	// .setResponse(jsonToStruct(functionResponse))
-	// .build())
-	// .build())
-	// .build();
-
-	// messageConversation.add(contentFnResp);
-
-	// return this.chatCompletionWithFunctionCallSupport(
-	// new GeminiRequest(messageConversation, request.model(), request.config()));
-	// }
-
 	private static String structToJson(Struct struct) {
 		try {
 			return JsonFormat.printer().print(struct);
@@ -431,19 +377,6 @@ public class VertexAiGeminiChatClient
 			throw new RuntimeException(e);
 		}
 	}
-
-	// private Boolean isToolCall(GenerateContentResponse response) {
-
-	// if (response == null || CollectionUtils.isEmpty(response.getCandidatesList())
-	// || response.getCandidatesList().get(0).getContent() == null
-	// ||
-	// CollectionUtils.isEmpty(response.getCandidatesList().get(0).getContent().getPartsList()))
-	// {
-	// return false;
-	// }
-	// return
-	// response.getCandidatesList().get(0).getContent().getPartsList().get(0).hasFunctionCall();
-	// }
 
 	@Override
 	public void destroy() throws Exception {
@@ -496,7 +429,7 @@ public class VertexAiGeminiChatClient
 		try {
 			return request.model.generateContent(request.contents, request.config);
 		}
-		catch (IOException e) {
+		catch (Exception e) {
 			throw new RuntimeException("Failed to generate content", e);
 		}
 	}

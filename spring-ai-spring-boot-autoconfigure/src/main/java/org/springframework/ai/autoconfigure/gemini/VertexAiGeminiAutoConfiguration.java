@@ -31,6 +31,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 
 /**
@@ -46,6 +47,9 @@ public class VertexAiGeminiAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public VertexAI vertexAi(VertexAiGeminiConnectionProperties connectionProperties) throws IOException {
+
+		Assert.hasText(connectionProperties.getProjectId(), "Vertex AI project-id must be set!");
+		Assert.hasText(connectionProperties.getLocation(), "Vertex AI location must be set!");
 
 		if (connectionProperties.getCredentialsUri() != null) {
 			GoogleCredentials credentials = GoogleCredentials
