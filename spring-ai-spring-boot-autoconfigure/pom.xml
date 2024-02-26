@@ -158,7 +158,7 @@
 		<!-- Vertex AI PaLM2 -->
 		<dependency>
 			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-vertex-ai</artifactId>
+			<artifactId>spring-ai-vertex-ai-palm2</artifactId>
 			<version>${project.parent.version}</version>
 			<optional>true</optional>
 		</dependency>

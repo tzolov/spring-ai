@@ -7,10 +7,10 @@
         <version>0.8.1-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
-    <artifactId>spring-ai-vertex-ai-gemini-spring-boot-starter</artifactId>
+    <artifactId>spring-ai-vertex-ai-plam2-spring-boot-starter</artifactId>
     <packaging>jar</packaging>
-    <name>Spring AI Starter - VertexAI Gemini</name>
-    <description>Spring AI Vertex Gemini AI Auto Configuration</description>
+    <name>Spring AI Starter - VertexAI PaLM2</name>
+    <description>Spring AI VertexAI PaLM2 Auto Configuration</description>
     <url>https://github.com/spring-projects/spring-ai</url>
 
     <scm>
@@ -34,7 +34,7 @@
 
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-vertex-ai-gemini</artifactId>
+            <artifactId>spring-ai-vertex-ai-palm2</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
     </dependencies>
