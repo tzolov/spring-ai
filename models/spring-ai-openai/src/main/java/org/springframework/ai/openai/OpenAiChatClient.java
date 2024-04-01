@@ -49,6 +49,7 @@ import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionMessage.MediaCo
 import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionMessage.Role;
 import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionMessage.ToolCall;
 import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest;
+import org.springframework.ai.openai.api.OpenAiFixedTokenCountChatHistory;
 import org.springframework.ai.openai.metadata.OpenAiChatResponseMetadata;
 import org.springframework.ai.openai.metadata.support.OpenAiResponseHeaderExtractor;
 import org.springframework.ai.retry.RetryUtils;
@@ -92,6 +93,8 @@ public class OpenAiChatClient extends
 	 * Low-level access to the OpenAI API.
 	 */
 	private final OpenAiApi openAiApi;
+
+	private final OpenAiFixedTokenCountChatHistory chatHistory = new OpenAiFixedTokenCountChatHistory(1000);
 
 	/**
 	 * Creates an instance of the OpenAiChatClient.
@@ -140,7 +143,15 @@ public class OpenAiChatClient extends
 
 		return this.retryTemplate.execute(ctx -> {
 
-			ResponseEntity<ChatCompletion> completionEntity = this.callWithFunctionSupport(request);
+			chatHistory.add("default", request.messages());
+
+			ChatCompletionRequest requestWithHistory = new ChatCompletionRequest(chatHistory.get("default"),
+					request.model(), request.frequencyPenalty(), request.logitBias(), request.maxTokens(), request.n(),
+					request.presencePenalty(), request.responseFormat(), request.seed(), request.stop(),
+					request.stream(), request.temperature(), request.topP(), request.tools(), request.toolChoice(),
+					request.user());
+
+			ResponseEntity<ChatCompletion> completionEntity = this.callWithFunctionSupport(requestWithHistory);
 
 			var chatCompletion = completionEntity.getBody();
 			if (chatCompletion == null) {
@@ -151,6 +162,9 @@ public class OpenAiChatClient extends
 			RateLimit rateLimits = OpenAiResponseHeaderExtractor.extractAiResponseHeaders(completionEntity);
 
 			List<Generation> generations = chatCompletion.choices().stream().map(choice -> {
+
+				chatHistory.add("default", choice.message());
+
 				return new Generation(choice.message().content(), toMap(chatCompletion.id(), choice))
 					.withGenerationMetadata(ChatGenerationMetadata.from(choice.finishReason().name(), null));
 			}).toList();
