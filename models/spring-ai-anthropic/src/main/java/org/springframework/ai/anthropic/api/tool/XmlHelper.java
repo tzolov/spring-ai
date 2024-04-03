@@ -15,6 +15,8 @@
  */
 package org.springframework.ai.anthropic.api.tool;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -29,12 +31,31 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
+import org.springframework.ai.anthropic.api.tool.XmlHelper.Tools.ToolDescription.Parameter;
 import org.springframework.util.StringUtils;
 
 /**
  * @author Christian Tzolov
  */
 public class XmlHelper {
+
+	public static final String TOO_SYSTEM_PROMPT_TEMPLATE = """
+		In this environment you have access to a set of tools you can use to answer the user's question.
+
+		You may call them like this:
+		<function_calls>
+			<invoke>
+				<tool_name>$TOOL_NAME</tool_name>
+				<parameters>
+					<$PARAMETER_NAME>$PARAMETER_VALUE</$PARAMETER_NAME>
+					...
+				</parameters>
+			</invoke>
+		</function_calls>
+
+		Here are the tools available:
+		<tools>%s</tools>
+		""";
 
 	// Regular expression to match XML block between <function_calls> and
 	// </function_calls> tags
@@ -84,6 +105,19 @@ public class XmlHelper {
 		}
 	} // @formatter:on
 
+	private static List<Parameter> xmlSchemaParams(Class<?> clazz) {
+
+			List<Parameter> parameters = new ArrayList<>();
+
+			// Get all declared fields of the class
+			Field[] fields = clazz.getDeclaredFields();
+
+			// Iterate through the fields and print their names
+			for (Field field : fields) {
+				parameters.add(new Parameter(field.getName(), field.getType().getSimpleName(), ""));
+			}
+		}
+	}
 	public static String extractFunctionCallsXmlBlock(String text) {
 		if (!StringUtils.hasText(text)) {
 			return "";
@@ -123,30 +157,31 @@ public class XmlHelper {
 		}
 	}
 
-	public static void main(String[] args) throws JsonMappingException, JsonProcessingException {
+	// public static void main(String[] args) throws JsonMappingException,
+	// JsonProcessingException {
 
-		String sample = """
-				<function_calls>
-					<invoke>
-						<tool_name>getCurrentWeather</tool_name>
-						<parameters>
-							<location>San Francisco, CA</location>
-							<unit>Celsius</unit>
-						</parameters>
-					</invoke>
-				</function_calls>
-				""";
+	// String sample = """
+	// <function_calls>
+	// <invoke>
+	// <tool_name>getCurrentWeather</tool_name>
+	// <parameters>
+	// <location>San Francisco, CA</location>
+	// <unit>Celsius</unit>
+	// </parameters>
+	// </invoke>
+	// </function_calls>
+	// """;
 
-		System.out.println(extractFunctionCalls(sample));
+	// System.out.println(extractFunctionCalls(sample));
 
-		var toolDescription = new Tools.ToolDescription("getCurrentWeather",
-				"Get the weather in location. Return temperature in 30°F or 30°C format.",
-				List.of(new Tools.ToolDescription.Parameter("location", "string",
-						"The city and state e.g. San Francisco, CA"),
-						new Tools.ToolDescription.Parameter("unit", "enum", "Temperature unit")));
+	// var toolDescription = new Tools.ToolDescription("getCurrentWeather",
+	// "Get the weather in location. Return temperature in 30°F or 30°C format.",
+	// List.of(new Tools.ToolDescription.Parameter("location", "string",
+	// "The city and state e.g. San Francisco, CA"),
+	// new Tools.ToolDescription.Parameter("unit", "enum", "Temperature unit")));
 
-		System.out.println(toXml(new Tools(List.of(toolDescription))));
+	// System.out.println(toXml(new Tools(List.of(toolDescription))));
 
-	}
+	// }
 
 }

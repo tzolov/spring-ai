@@ -13,13 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.springframework.ai.anthropic.api.tool;
+package org.springframework.ai.anthropic;
 
 import java.util.function.Function;
 
+import com.fasterxml.jackson.annotation.JsonClassDescription;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 
 /**
  * @author Christian Tzolov
@@ -30,17 +32,11 @@ public class MockWeatherService implements Function<MockWeatherService.Request, 
 	 * Weather Function request.
 	 */
 	@JsonInclude(Include.NON_NULL)
-	public record Request(@JsonProperty(required = true, value = "location") String location,
-			@JsonProperty(required = true, value = "unit") Unit unit) {
+	@JsonClassDescription("Weather API request")
+	public record Request(@JsonProperty(required = true,
+			value = "location") @JsonPropertyDescription("The city and state e.g. San Francisco, CA") String location,
+			@JsonProperty(required = true, value = "unit") @JsonPropertyDescription("Temperature unit") Unit unit) {
 	}
-	// @JsonInclude(Include.NON_NULL)
-	// @JsonClassDescription("Weather API request")
-	// public record Request(@JsonProperty(required = true,
-	// value = "location") @JsonPropertyDescription("The city and state e.g. San
-	// Francisco, CA") String location,
-	// @JsonProperty(required = true, value = "unit")
-	// @JsonPropertyDescription("Temperature unit") Unit unit) {
-	// }
 
 	/**
 	 * Temperature units.
@@ -70,7 +66,8 @@ public class MockWeatherService implements Function<MockWeatherService.Request, 
 	/**
 	 * Weather Function response.
 	 */
-	public record Response(double temp, Unit unit) {
+	public record Response(double temp, double feels_like, double temp_min, double temp_max, int pressure, int humidity,
+			Unit unit) {
 	}
 
 	@Override
@@ -87,7 +84,7 @@ public class MockWeatherService implements Function<MockWeatherService.Request, 
 			temperature = 30;
 		}
 
-		return new Response(temperature, Unit.C);
+		return new Response(temperature, 15, 20, 2, 53, 45, Unit.C);
 	}
 
 }

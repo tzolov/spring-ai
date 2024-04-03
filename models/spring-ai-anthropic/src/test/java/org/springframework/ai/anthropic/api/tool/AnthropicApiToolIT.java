@@ -15,6 +15,7 @@
  */
 package org.springframework.ai.anthropic.api.tool;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -92,24 +93,33 @@ public class AnthropicApiToolIT {
 
 		String toolDescription = XmlHelper.toXml(new Tools(List.of(new ToolDescription("getCurrentWeather",
 				"Get the weather in location. Return temperature in 30°F or 30°C format.",
-				List.of(new Parameter("location", "string", "The city and state e.g. San Francisco, CA"),
+				List.of(new Parameter("location", "string", "The city and state"),
 						new Parameter("unit", "enum", "Temperature unit. Use only C or F. Default is C."))))));
+		// List.of(new Parameter("location", "string", "The city and state e.g. San
+		// Francisco, CA"),
+		// new Parameter("unit", "enum", "Temperature unit. Use only C or F. Default is
+		// C."))))));
 
 		logger.info("TOOLS: " + toolDescription);
 
 		String systemPrompt = String.format(TOO_SYSTEM_PROMPT_TEMPLATE, toolDescription);
 
 		RequestMessage chatCompletionMessage = new RequestMessage(
-				List.of(new MediaContent("What's the weather like in Paris? Show the temperature in Celsius.")),
+				// List.of(new MediaContent("What's the weather like in Paris? Show the
+				// temperature in Celsius.")),
+				List.of(new MediaContent(
+						"What's the weather in Paris, France and in Tokyo, Japan ? Show the temperature in Celsius.")),
 				// "What's the weather like in San Francisco, Tokyo, and Paris? Show the
 				// temperature in Celsius.")),
 				Role.USER);
 
-		ChatCompletionRequest chatCompletionRequest = new ChatCompletionRequest(
-				AnthropicApi.ChatModel.CLAUDE_3_OPUS.getValue(), List.of(chatCompletionMessage), systemPrompt, 500,
-				0.8f, false);
+		List<RequestMessage> conversationHistory = new ArrayList<>();
 
-		ResponseEntity<ChatCompletion> chatCompletion = doCall(chatCompletionRequest);
+		ChatCompletionRequest chatCompletionRequest = new ChatCompletionRequest(
+				AnthropicApi.ChatModel.CLAUDE_3_OPUS.getValue(), List.of(chatCompletionMessage), systemPrompt, 2000,
+				List.of("</function_calls>"), 0.8f, false);
+
+		ResponseEntity<ChatCompletion> chatCompletion = doCall(chatCompletionRequest, conversationHistory);
 
 		var responseText = chatCompletion.getBody().content().get(0).text();
 		logger.info("FINAL RESPONSE: " + responseText);
@@ -117,11 +127,20 @@ public class AnthropicApiToolIT {
 		assertThat(responseText).contains("15");
 	}
 
-	private ResponseEntity<ChatCompletion> doCall(ChatCompletionRequest chatCompletionRequest) {
+	private ResponseEntity<ChatCompletion> doCall(ChatCompletionRequest chatCompletionRequest,
+			List<RequestMessage> conversationHistory) {
 
-		ResponseEntity<ChatCompletion> response = anthropicApi.chatCompletionEntity(chatCompletionRequest);
+		conversationHistory.addAll(chatCompletionRequest.messages());
 
-		FunctionCalls functionCalls = XmlHelper.extractFunctionCalls(response.getBody().content().get(0).text());
+		var request1 = new ChatCompletionRequest(chatCompletionRequest.model(), conversationHistory,
+				chatCompletionRequest.system(), chatCompletionRequest.maxTokens(),
+				chatCompletionRequest.stopSequences(), chatCompletionRequest.temperature(),
+				chatCompletionRequest.stream());
+
+		ResponseEntity<ChatCompletion> response = anthropicApi.chatCompletionEntity(request1);
+
+		FunctionCalls functionCalls = XmlHelper
+			.extractFunctionCalls(response.getBody().content().get(0).text() + "</function_calls>");
 
 		if (functionCalls == null) {
 			return response;
@@ -129,12 +148,14 @@ public class AnthropicApiToolIT {
 
 		logger.info("FunctionCalls from the LLM: " + functionCalls);
 
-		MockWeatherService.Request request = ModelOptionsUtils.mapToClass(functionCalls.invoke().parameters(),
+		conversationHistory.add(new RequestMessage(response.getBody().content(), response.getBody().role()));
+
+		MockWeatherService.Request functionRequest = ModelOptionsUtils.mapToClass(functionCalls.invoke().parameters(),
 				MockWeatherService.Request.class);
 
-		logger.info("Resolved function request param: " + request);
+		logger.info("Resolved function request param: " + functionRequest);
 
-		Object functionCallResponseData = FUNCTIONS.get(functionCalls.invoke().toolName()).apply(request);
+		Object functionCallResponseData = FUNCTIONS.get(functionCalls.invoke().toolName()).apply(functionRequest);
 
 		XmlHelper.FunctionResults functionResults = new XmlHelper.FunctionResults(List
 			.of(new XmlHelper.FunctionResults.Result(functionCalls.invoke().toolName(), functionCallResponseData)));
@@ -145,8 +166,10 @@ public class AnthropicApiToolIT {
 
 		RequestMessage chatCompletionMessage2 = new RequestMessage(List.of(new MediaContent(content)), Role.USER);
 
-		return doCall(new ChatCompletionRequest(AnthropicApi.ChatModel.CLAUDE_3_OPUS.getValue(),
-				List.of(chatCompletionMessage2), null, 500, 0.8f, false));
+		return doCall(new ChatCompletionRequest(chatCompletionRequest.model(), List.of(chatCompletionMessage2),
+				chatCompletionRequest.system(), chatCompletionRequest.maxTokens(),
+				chatCompletionRequest.stopSequences(), chatCompletionRequest.temperature(),
+				chatCompletionRequest.stream()), conversationHistory);
 	}
 
 }

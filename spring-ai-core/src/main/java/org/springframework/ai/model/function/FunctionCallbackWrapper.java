@@ -60,7 +60,7 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 
 		public enum SchemaType {
 
-			JSON_SCHEMA, OPEN_API_SCHEMA
+			JSON_SCHEMA, OPEN_API_SCHEMA, ANTHROPIC_XML_SCHEMA
 
 		}
 
