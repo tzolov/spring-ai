@@ -31,46 +31,13 @@ public class MockWeatherService implements Function<MockWeatherService.Request, 
 	 */
 	@JsonInclude(Include.NON_NULL)
 	public record Request(@JsonProperty(required = true, value = "location") String location,
-			@JsonProperty(required = true, value = "unit") Unit unit) {
-	}
-	// @JsonInclude(Include.NON_NULL)
-	// @JsonClassDescription("Weather API request")
-	// public record Request(@JsonProperty(required = true,
-	// value = "location") @JsonPropertyDescription("The city and state e.g. San
-	// Francisco, CA") String location,
-	// @JsonProperty(required = true, value = "unit")
-	// @JsonPropertyDescription("Temperature unit") Unit unit) {
-	// }
-
-	/**
-	 * Temperature units.
-	 */
-	public enum Unit {
-
-		/**
-		 * Celsius.
-		 */
-		C("metric"),
-		/**
-		 * Fahrenheit.
-		 */
-		F("imperial");
-
-		/**
-		 * Human readable unit name.
-		 */
-		public final String unitName;
-
-		private Unit(String text) {
-			this.unitName = text;
-		}
-
+			@JsonProperty(required = true, value = "unit") String unit) {
 	}
 
 	/**
 	 * Weather Function response.
 	 */
-	public record Response(double temp, Unit unit) {
+	public record Response(double temp, String unit) {
 	}
 
 	@Override
@@ -87,7 +54,7 @@ public class MockWeatherService implements Function<MockWeatherService.Request, 
 			temperature = 30;
 		}
 
-		return new Response(temperature, Unit.C);
+		return new Response(temperature, request.unit());
 	}
 
 }

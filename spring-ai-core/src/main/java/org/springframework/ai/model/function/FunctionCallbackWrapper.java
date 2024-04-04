@@ -15,6 +15,8 @@
  */
 package org.springframework.ai.model.function;
 
+import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -34,10 +36,38 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 
 	private final Function<I, O> function;
 
+	/**
+	 * Constructs a new {@link FunctionCallbackWrapper} with the given name, description,
+	 * input type and JsonSchema request instance parser.
+	 * @param name Function name.
+	 * @param description Function description.
+	 * @param inputTypeSchema Function input type schema.
+	 * @param inputType Function input type class.
+	 * @param responseConverter Optional function response converter.
+	 * @param function The function to be wrapped.
+	 */
 	private FunctionCallbackWrapper(String name, String description, String inputTypeSchema, Class<I> inputType,
 			Function<O, String> responseConverter, Function<I, O> function) {
-		super(name, description, inputTypeSchema, inputType, responseConverter,
-				new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false));
+		this(name, description, inputTypeSchema, inputType, responseConverter, function, (jsonArgumentRequest,
+				requestClass) -> ModelOptionsUtils.jsonToObject((String) jsonArgumentRequest, requestClass));
+	}
+
+	/**
+	 * Constructs a new {@link FunctionCallbackWrapper} with the given name, description,
+	 * input type and request instance parser.
+	 * @param name Function name.
+	 * @param description Function description.
+	 * @param inputTypeSchema Function input type schema.
+	 * @param inputType Function input type class.
+	 * @param responseConverter Optional function response converter.
+	 * @param function The function to be wrapped.
+	 * @param requestInstanceParser The function to parse the input request string into
+	 * the input type instance.
+	 */
+	private FunctionCallbackWrapper(String name, String description, String inputTypeSchema, Class<I> inputType,
+			Function<O, String> responseConverter, Function<I, O> function,
+			BiFunction<Object, Class<I>, I> requestInstanceParser) {
+		super(name, description, inputTypeSchema, inputType, responseConverter, requestInstanceParser);
 		Assert.notNull(function, "Function must not be null");
 		this.function = function;
 	}
@@ -73,6 +103,10 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 		private final Function<I, O> function;
 
 		private SchemaType schemaType = SchemaType.JSON_SCHEMA;
+
+		private BiFunction<Object, Class<I>, I> requestInstanceParser = (jsonArgumentRequest, requestClass) -> {
+			return ModelOptionsUtils.jsonToObject((String) jsonArgumentRequest, requestClass);
+		};
 
 		public Builder(Function<I, O> function) {
 			Assert.notNull(function, "Function must not be null");
@@ -129,6 +163,12 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 			return this;
 		}
 
+		public Builder<I, O> withRequestInstanceParser(BiFunction<Object, Class<I>, I> requestInstanceParser) {
+			Assert.notNull(requestInstanceParser, "RequestInstanceParser must not be null");
+			this.requestInstanceParser = requestInstanceParser;
+			return this;
+		}
+
 		public FunctionCallbackWrapper<I, O> build() {
 
 			Assert.hasText(this.name, "Name must not be empty");
@@ -143,12 +183,21 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 			}
 
 			if (this.inputTypeSchema == null) {
-				boolean upperCaseTypeValues = this.schemaType == SchemaType.OPEN_API_SCHEMA;
-				this.inputTypeSchema = ModelOptionsUtils.getJsonSchema(this.inputType, upperCaseTypeValues);
+				if (this.schemaType == SchemaType.ANTHROPIC_XML_SCHEMA) {
+					XmlHelper.Parameters params = XmlHelper.xmlSchemaParams(this.inputType);
+					this.inputTypeSchema = XmlHelper.toXml(params);
+					this.requestInstanceParser = (xmlArguments, requestClass) -> {
+						return ModelOptionsUtils.mapToClass((Map<String, Object>) xmlArguments, requestClass);
+					};
+				}
+				else {
+					boolean upperCaseTypeValues = this.schemaType == SchemaType.OPEN_API_SCHEMA;
+					this.inputTypeSchema = ModelOptionsUtils.getJsonSchema(this.inputType, upperCaseTypeValues);
+				}
 			}
 
 			return new FunctionCallbackWrapper<>(this.name, this.description, this.inputTypeSchema, this.inputType,
-					this.responseConverter, this.function);
+					this.responseConverter, this.function, this.requestInstanceParser);
 		}
 
 	}

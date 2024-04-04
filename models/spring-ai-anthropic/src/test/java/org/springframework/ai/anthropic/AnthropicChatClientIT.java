@@ -26,8 +26,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 
 import org.springframework.ai.anthropic.api.AnthropicApi;
+import org.springframework.ai.anthropic.api.tool.MockWeatherService;
 import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.ChatResponse;
 import org.springframework.ai.chat.Generation;
@@ -40,6 +42,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.model.function.FunctionCallbackWrapper;
+import org.springframework.ai.model.function.FunctionCallbackWrapper.Builder.SchemaType;
 import org.springframework.ai.parser.BeanOutputParser;
 import org.springframework.ai.parser.ListOutputParser;
 import org.springframework.ai.parser.MapOutputParser;
@@ -80,8 +83,8 @@ class AnthropicChatClientIT {
 		assertThat(response.getMetadata().getUsage().getGenerationTokens()).isGreaterThan(0);
 		assertThat(response.getMetadata().getUsage().getPromptTokens()).isGreaterThan(0);
 		assertThat(response.getMetadata().getUsage().getTotalTokens())
-				.isEqualTo(response.getMetadata().getUsage().getPromptTokens()
-						+ response.getMetadata().getUsage().getGenerationTokens());
+			.isEqualTo(response.getMetadata().getUsage().getPromptTokens()
+					+ response.getMetadata().getUsage().getGenerationTokens());
 		Generation generation = response.getResults().get(0);
 		assertThat(generation.getOutput().getContent()).contains("Blackbeard");
 		assertThat(generation.getMetadata().getFinishReason()).isEqualTo("end_turn");
@@ -163,14 +166,14 @@ class AnthropicChatClientIT {
 		Prompt prompt = new Prompt(promptTemplate.createMessage());
 
 		String generationTextFromStream = streamingChatClient.stream(prompt)
-				.collectList()
-				.block()
-				.stream()
-				.map(ChatResponse::getResults)
-				.flatMap(List::stream)
-				.map(Generation::getOutput)
-				.map(AssistantMessage::getContent)
-				.collect(Collectors.joining());
+			.collectList()
+			.block()
+			.stream()
+			.map(ChatResponse::getResults)
+			.flatMap(List::stream)
+			.map(Generation::getOutput)
+			.map(AssistantMessage::getContent)
+			.collect(Collectors.joining());
 
 		ActorsFilmsRecord actorsFilms = outputParser.parse(generationTextFromStream);
 		logger.info("" + actorsFilms);
@@ -195,24 +198,66 @@ class AnthropicChatClientIT {
 	@Test
 	void functionCallTest() {
 
-		UserMessage userMessage = new UserMessage("What's the weather like in San Francisco?");
+		UserMessage userMessage = new UserMessage(
+				"What's the weather like in San Francisco, Tokio and Paris? Return the result in Celsius.");
 
 		List<Message> messages = new ArrayList<>(List.of(userMessage));
 
 		var promptOptions = AnthropicChatOptions.builder()
-				.withModel(AnthropicApi.ChatModel.CLAUDE_3_OPUS.getValue())
-				.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
-						.withName("getCurrentWeather")
-						.withDescription("Get the weather in location")
-						// .withResponseConverter((response) -> "" + response.temp() + response.unit())
-						.build()))
-				.build();
+			.withModel(AnthropicApi.ChatModel.CLAUDE_3_OPUS.getValue())
+			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
+				.withName("getCurrentWeather")
+				.withDescription("Get the weather in location")
+				.withSchemaType(SchemaType.ANTHROPIC_XML_SCHEMA)
+				// .withResponseConverter((response) -> "" + response.temp() + " " +
+				// response.unit())
+				.build()))
+			.build();
 
 		ChatResponse response = chatClient.call(new Prompt(messages, promptOptions));
 
 		logger.info("Response: {}", response);
 
 		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("30.0", "30");
+		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("10.0", "10");
+		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("15.0", "15");
+	}
+
+	@Test
+	void streamingFunctionCallTest() {
+
+		UserMessage userMessage = new UserMessage(
+				"What's the weather like in San Francisco, Tokio and Paris? Return the result in Celsius.");
+
+		List<Message> messages = new ArrayList<>(List.of(userMessage));
+
+		var promptOptions = AnthropicChatOptions.builder()
+			.withModel(AnthropicApi.ChatModel.CLAUDE_3_OPUS.getValue())
+			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(new MockWeatherService())
+				.withName("getCurrentWeather")
+				.withDescription("Get the weather in location")
+				.withSchemaType(SchemaType.ANTHROPIC_XML_SCHEMA)
+				// .withResponseConverter((response) -> "" + response.temp() + " " +
+				// response.unit())
+				.build()))
+			.build();
+
+		Flux<ChatResponse> fluxResponse = streamingChatClient.stream(new Prompt(messages, promptOptions));
+
+		var response = fluxResponse.collectList()
+			.block()
+			.stream()
+			.map(ChatResponse::getResults)
+			.flatMap(List::stream)
+			.map(Generation::getOutput)
+			.map(AssistantMessage::getContent)
+			.collect(Collectors.joining());
+
+		logger.info("Response: {}", response);
+
+		// assertThat(response).containsAnyOf("30.0", "30");
+		// assertThat(response).containsAnyOf("10.0", "10");
+		// assertThat(response).containsAnyOf("15.0", "15");
 	}
 
 }

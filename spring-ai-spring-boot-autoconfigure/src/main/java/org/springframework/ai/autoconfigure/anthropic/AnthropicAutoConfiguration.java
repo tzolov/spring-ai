@@ -18,12 +18,15 @@ package org.springframework.ai.autoconfigure.anthropic;
 import org.springframework.ai.anthropic.AnthropicChatClient;
 import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.autoconfigure.retry.SpringAiRetryAutoConfiguration;
+import org.springframework.ai.model.function.FunctionCallbackContext;
+import org.springframework.ai.model.function.FunctionCallbackWrapper.Builder.SchemaType;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.web.client.ResponseErrorHandler;
@@ -52,8 +55,21 @@ public class AnthropicAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public AnthropicChatClient anthropicChatClient(AnthropicApi anthropicApi, AnthropicChatProperties chatProperties,
-			RetryTemplate retryTemplate) {
-		return new AnthropicChatClient(anthropicApi, chatProperties.getOptions(), retryTemplate);
+			RetryTemplate retryTemplate, ApplicationContext context) {
+		FunctionCallbackContext functionCallbackContext = springAiFunctionManager(context);
+		return new AnthropicChatClient(anthropicApi, chatProperties.getOptions(), retryTemplate,
+				functionCallbackContext);
+	}
+
+	/**
+	 * Because of the ANTHROPIC_XML_SCHEMA type, the FunctionCallbackContext instance must
+	 * different from the other JSON schema types.
+	 */
+	private FunctionCallbackContext springAiFunctionManager(ApplicationContext context) {
+		FunctionCallbackContext manager = new FunctionCallbackContext();
+		manager.setSchemaType(SchemaType.ANTHROPIC_XML_SCHEMA);
+		manager.setApplicationContext(context);
+		return manager;
 	}
 
 }

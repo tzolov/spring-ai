@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.springframework.ai.anthropic.api.tool;
+package org.springframework.ai.model.function;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -26,12 +26,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
-import org.springframework.ai.anthropic.api.tool.XmlHelper.Tools.ToolDescription.Parameter;
 import org.springframework.util.StringUtils;
 
 /**
@@ -40,22 +38,22 @@ import org.springframework.util.StringUtils;
 public class XmlHelper {
 
 	public static final String TOO_SYSTEM_PROMPT_TEMPLATE = """
-		In this environment you have access to a set of tools you can use to answer the user's question.
+			In this environment you have access to a set of tools you can use to answer the user's question.
 
-		You may call them like this:
-		<function_calls>
-			<invoke>
-				<tool_name>$TOOL_NAME</tool_name>
-				<parameters>
-					<$PARAMETER_NAME>$PARAMETER_VALUE</$PARAMETER_NAME>
-					...
-				</parameters>
-			</invoke>
-		</function_calls>
+			You may call them like this:
+			<function_calls>
+				<invoke>
+					<tool_name>$TOOL_NAME</tool_name>
+					<parameters>
+						<$PARAMETER_NAME>$PARAMETER_VALUE</$PARAMETER_NAME>
+						...
+					</parameters>
+				</invoke>
+			</function_calls>
 
-		Here are the tools available:
-		<tools>%s</tools>
-		""";
+			Here are the tools available:
+			<tools>%s</tools>
+			""";
 
 	// Regular expression to match XML block between <function_calls> and
 	// </function_calls> tags
@@ -105,19 +103,26 @@ public class XmlHelper {
 		}
 	} // @formatter:on
 
-	private static List<Parameter> xmlSchemaParams(Class<?> clazz) {
-
-			List<Parameter> parameters = new ArrayList<>();
-
-			// Get all declared fields of the class
-			Field[] fields = clazz.getDeclaredFields();
-
-			// Iterate through the fields and print their names
-			for (Field field : fields) {
-				parameters.add(new Parameter(field.getName(), field.getType().getSimpleName(), ""));
-			}
-		}
+	@JsonInclude(Include.NON_NULL) // @formatter:off
+	@JacksonXmlRootElement(localName = "parameters")
+	public record Parameters(@JacksonXmlElementWrapper(useWrapping = false) @JsonProperty("parameter") List<Tools.ToolDescription.Parameter> parameters) {
 	}
+
+	public static Parameters xmlSchemaParams(Class<?> clazz) {
+
+		List<Tools.ToolDescription.Parameter> parameters = new ArrayList<>();
+
+		// Get all declared fields of the class
+		Field[] fields = clazz.getDeclaredFields();
+
+		// Iterate through the fields and print their names
+		for (Field field : fields) {
+			parameters.add(new Tools.ToolDescription.Parameter(field.getName(), field.getType().getSimpleName(), ""));
+		}
+
+		return new Parameters(parameters);
+	}
+
 	public static String extractFunctionCallsXmlBlock(String text) {
 		if (!StringUtils.hasText(text)) {
 			return "";

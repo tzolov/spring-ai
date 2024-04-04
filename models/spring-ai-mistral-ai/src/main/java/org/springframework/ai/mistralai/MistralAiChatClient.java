@@ -150,7 +150,8 @@ public class MistralAiChatClient extends
 
 			return completionChunks.map(chunk -> toChatCompletion(chunk)).map(chatCompletion -> {
 
-				chatCompletion = handleFunctionCallOrReturn(request, ResponseEntity.of(Optional.of(chatCompletion)))
+				chatCompletion = this
+					.handleFunctionCallOrReturn(request, ResponseEntity.of(Optional.of(chatCompletion)))
 					.getBody();
 
 				@SuppressWarnings("null")

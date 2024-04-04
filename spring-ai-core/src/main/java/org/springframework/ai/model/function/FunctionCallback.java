@@ -42,11 +42,10 @@ public interface FunctionCallback {
 	/**
 	 * Called when a model detects and triggers a function call. The model is responsible
 	 * to pass the function arguments in the pre-configured JSON schema format.
-	 * @param functionInput JSON string with the function arguments to be passed to the
-	 * function. The arguments are defined as JSON schema usually registered with the the
-	 * model.
+	 * @param functionInput Function arguments to be passed to the function. The arguments
+	 * can be defined as JSON schema usually registered with the the model, XML or Map.
 	 * @return String containing the function call response.
 	 */
-	public String call(String functionInput);
+	public String call(Object functionInput);
 
 }

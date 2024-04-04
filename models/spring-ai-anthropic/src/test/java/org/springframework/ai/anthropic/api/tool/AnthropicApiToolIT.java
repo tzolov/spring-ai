@@ -31,11 +31,12 @@ import org.springframework.ai.anthropic.api.AnthropicApi.ChatCompletionRequest;
 import org.springframework.ai.anthropic.api.AnthropicApi.MediaContent;
 import org.springframework.ai.anthropic.api.AnthropicApi.RequestMessage;
 import org.springframework.ai.anthropic.api.AnthropicApi.Role;
-import org.springframework.ai.anthropic.api.tool.XmlHelper.FunctionCalls;
-import org.springframework.ai.anthropic.api.tool.XmlHelper.Tools;
-import org.springframework.ai.anthropic.api.tool.XmlHelper.Tools.ToolDescription;
-import org.springframework.ai.anthropic.api.tool.XmlHelper.Tools.ToolDescription.Parameter;
 import org.springframework.ai.model.ModelOptionsUtils;
+import org.springframework.ai.model.function.XmlHelper;
+import org.springframework.ai.model.function.XmlHelper.FunctionCalls;
+import org.springframework.ai.model.function.XmlHelper.Tools;
+import org.springframework.ai.model.function.XmlHelper.Tools.ToolDescription;
+import org.springframework.ai.model.function.XmlHelper.Tools.ToolDescription.Parameter;
 import org.springframework.http.ResponseEntity;
 
 import static org.assertj.core.api.Assertions.assertThat;

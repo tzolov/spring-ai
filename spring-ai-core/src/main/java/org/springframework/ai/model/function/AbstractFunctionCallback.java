@@ -15,10 +15,8 @@
  */
 package org.springframework.ai.model.function;
 
+import java.util.function.BiFunction;
 import java.util.function.Function;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.util.Assert;
 
@@ -47,7 +45,7 @@ abstract class AbstractFunctionCallback<I, O> implements Function<I, O>, Functio
 
 	private final String inputTypeSchema;
 
-	private final ObjectMapper objectMapper;
+	private final BiFunction<Object, Class<I>, I> requestInstanceParser;
 
 	private final Function<O, String> responseConverter;
 
@@ -67,19 +65,19 @@ abstract class AbstractFunctionCallback<I, O> implements Function<I, O>, Functio
 	 * from JSON.
 	 */
 	protected AbstractFunctionCallback(String name, String description, String inputTypeSchema, Class<I> inputType,
-			Function<O, String> responseConverter, ObjectMapper objectMapper) {
+			Function<O, String> responseConverter, BiFunction<Object, Class<I>, I> requestInstanceParser) {
 		Assert.notNull(name, "Name must not be null");
 		Assert.notNull(description, "Description must not be null");
 		Assert.notNull(inputType, "InputType must not be null");
 		Assert.notNull(inputTypeSchema, "InputTypeSchema must not be null");
 		Assert.notNull(responseConverter, "ResponseConverter must not be null");
-		Assert.notNull(objectMapper, "ObjectMapper must not be null");
+		Assert.notNull(requestInstanceParser, "RequestInstanceParser must not be null");
 		this.name = name;
 		this.description = description;
 		this.inputType = inputType;
 		this.inputTypeSchema = inputTypeSchema;
 		this.responseConverter = responseConverter;
-		this.objectMapper = objectMapper;
+		this.requestInstanceParser = requestInstanceParser;
 	}
 
 	@Override
@@ -98,22 +96,13 @@ abstract class AbstractFunctionCallback<I, O> implements Function<I, O>, Functio
 	}
 
 	@Override
-	public String call(String functionArguments) {
+	public String call(Object functionArguments) {
 
-		// Convert the tool calls JSON arguments into a Java function request object.
-		I request = fromJson(functionArguments, inputType);
+		// Convert the tool calls arguments into a Java function request object.
+		I request = this.requestInstanceParser.apply(functionArguments, this.inputType);
 
 		// extend conversation with function response.
 		return this.andThen(this.responseConverter).apply(request);
-	}
-
-	private <T> T fromJson(String json, Class<T> targetClass) {
-		try {
-			return this.objectMapper.readValue(json, targetClass);
-		}
-		catch (JsonProcessingException e) {
-			throw new RuntimeException(e);
-		}
 	}
 
 	@Override
