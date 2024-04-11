@@ -1,31 +1,34 @@
-package org.springframework.ai.chat.engine2;
+package org.springframework.ai.chat.engine3;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.springframework.ai.chat.ChatClient;
+import org.springframework.ai.chat.StreamingChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
 
-public class ChatEngine2 implements Engine2 {
+public class ChatEngine3 {
 
-	private List<EngineRetriever> engineRetrievers;
+	private List<Retriever> retrievers;
 
 	private List<Augmenter> augmenters;
 
-	private Generator generator;
+	private ChatClient chatClient;
+	private StreamingChatClient streamingChatClient;
 
-	private EngineListener engineListener; // TODO
+	private EngineListener engineListener;
 
-	public ChatEngine2(List<EngineRetriever> engineRetrievers, List<Augmentor> augmentors, Generator generator,
+	public ChatEngine3(List<Retriever> retrievers, List<Augmenter> augmentors, Generator generator,
 			EngineListener engineListener) {
-		this.engineRetrievers = engineRetrievers;
-		this.augmentors = augmentors;
+		this.retrievers = retrievers;
+		this.augmenters = augmentors;
 		this.generator = generator;
 		this.engineListener = engineListener;
 	}
 
 	@Override
-	public EngineResponse2 call(EngineRequest2 engineRequest2) {
+	public EngineResponse3 call(EngineRequest3 engineRequest2) {
 		RetrievalResponse retrievalResponse = doRetrieval(engineRequest2);
 
 		AugmentRequest augmentRequest = new AugmentRequest(engineRequest2, retrievalResponse);
@@ -36,14 +39,14 @@ public class ChatEngine2 implements Engine2 {
 
 		engineListener.onComplete(engineRequest2, generateResponse);
 
-		return new EngineResponse2(engineRequest2, retrievalResponse, augmentResponse, generateResponse, List.of());
+		return new EngineResponse3(engineRequest2, retrievalResponse, augmentResponse, generateResponse, List.of());
 	}
 
-	protected RetrievalResponse doRetrieval(EngineRequest2 engineRequest2) {
+	protected RetrievalResponse doRetrieval(EngineRequest3 engineRequest2) {
 		RetrievalRequest retrievalRequest = new RetrievalRequest(engineRequest2);
 		List<RetrievalResponse> retrievalResponses = new ArrayList<>();
-		for (EngineRetriever engineRetriever : engineRetrievers) {
-			RetrievalResponse retrievalResponse = engineRetriever.retrieve(retrievalRequest);
+		for (Retriever retriever : retrievers) {
+			RetrievalResponse retrievalResponse = retriever.retrieve(retrievalRequest);
 			retrievalResponses.add(retrievalResponse);
 		}
 		RetrievalResponse retrievalResponse = retrievalResponses.stream()
@@ -74,7 +77,7 @@ public class ChatEngine2 implements Engine2 {
 																								// as
 																								// needed
 
-				EngineRequest2 newEngineRequest = new EngineRequest2(conversationId, newPrompt);
+				EngineRequest3 newEngineRequest = new EngineRequest3(conversationId, newPrompt);
 				currentRequest = new AugmentRequest(newEngineRequest, retrievalResponse);
 			}
 		}
@@ -83,7 +86,7 @@ public class ChatEngine2 implements Engine2 {
 		return lastResponse;
 	}
 
-	protected GenerateResponse doGeneration(GenerateRequest generateRequest) {
+	private GenerateResponse doGeneration(GenerateRequest generateRequest) {
 		return this.generator.generate(generateRequest);
 	}
 

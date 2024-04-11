@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ChatExchangeAugmenter implements Augmentor {
+public class ChatExchangeAugmenter implements Augmenter {
 
 	public static final String HISTORY_PROMPT = """
 			Use the conversation history from the HISTORY section to provide accurate answers.

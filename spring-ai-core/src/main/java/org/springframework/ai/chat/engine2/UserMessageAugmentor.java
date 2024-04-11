@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class UserMessageAugmentor implements Augmentor {
+public class UserMessageAugmentor implements Augmenter {
 
 	private static final String DEFAULT_USER_PROMPT_TEXT = """
 			   "Context information is below.\\n"
