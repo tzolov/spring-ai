@@ -16,12 +16,12 @@
 
 package org.springframework.ai.chat.engine3;
 
+import org.springframework.ai.chat.prompt.Prompt;
+
 /**
  *
  * @author Christian Tzolov
  */
-public interface ChatRetriever<T> {
-
-	public T retrieve(EngineRequest3 request);
-
+public interface ChatAugmenter<T> {
+	public Prompt augment(Prompt originalPrompt, T chatHistory);
 }

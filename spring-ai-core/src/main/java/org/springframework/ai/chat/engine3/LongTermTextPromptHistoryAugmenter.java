@@ -16,12 +16,22 @@
 
 package org.springframework.ai.chat.engine3;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.ai.document.Document;
+
 /**
  *
  * @author Christian Tzolov
  */
-public interface ChatRetriever<T> {
+public class LongTermTextPromptHistoryAugmenter extends AbstractTextPromptAugmenter<List<Document>> {
 
-	public T retrieve(EngineRequest3 request);
+	@Override
+	protected String doCreateContext(List<Document> chatHistory) {
+		return chatHistory.stream()
+				.map(d -> d.getContent())
+				.collect(Collectors.joining(System.lineSeparator()));
+	}
 
 }
