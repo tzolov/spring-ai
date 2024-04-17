@@ -16,10 +16,10 @@ public class ChatEngine2 implements Engine2 {
 
 	private EngineListener engineListener; // TODO
 
-	public ChatEngine2(List<EngineRetriever> engineRetrievers, List<Augmentor> augmentors, Generator generator,
+	public ChatEngine2(List<EngineRetriever> engineRetrievers, List<Augmenter> augmentors, Generator generator,
 			EngineListener engineListener) {
 		this.engineRetrievers = engineRetrievers;
-		this.augmentors = augmentors;
+		this.augmenters = augmentors;
 		this.generator = generator;
 		this.engineListener = engineListener;
 	}
