@@ -1,6 +1,11 @@
 package org.springframework.ai.azure.openai.dto;
 
-import com.azure.ai.openai.models.*;
+import com.azure.ai.openai.models.AzureChatEnhancements;
+import com.azure.ai.openai.models.ChatChoice;
+import com.azure.ai.openai.models.ChatChoiceLogProbabilityInfo;
+import com.azure.ai.openai.models.ChatFinishDetails;
+import com.azure.ai.openai.models.CompletionsFinishReason;
+import com.azure.ai.openai.models.ContentFilterResultsForChoice;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class AccessibleChatChoice {
