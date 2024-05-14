@@ -18,7 +18,6 @@ package org.springframework.ai.azure.openai.metadata;
 import com.azure.ai.openai.models.ChatCompletions;
 import com.azure.ai.openai.models.CompletionsUsage;
 
-import org.springframework.ai.azure.openai.dto.AccessibleChatCompletions;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.util.Assert;
 
@@ -31,7 +30,7 @@ import org.springframework.util.Assert;
  */
 public class AzureOpenAiUsage implements Usage {
 
-	public static AzureOpenAiUsage from(AccessibleChatCompletions chatCompletions) {
+	public static AzureOpenAiUsage from(ChatCompletions chatCompletions) {
 		Assert.notNull(chatCompletions, "ChatCompletions must not be null");
 		return from(chatCompletions.getUsage());
 	}
