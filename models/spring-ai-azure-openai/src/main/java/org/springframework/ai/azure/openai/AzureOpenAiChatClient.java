@@ -515,19 +515,24 @@ public class AzureOpenAiChatClient
 		return copyOptions;
 	}
 
-	@Override
-	protected boolean hasReturningFunction(ChatRequestMessage responseMessage) {
-		return ((ChatRequestAssistantMessage) responseMessage).getToolCalls()
-			.stream()
-			.map(toolCall -> ((ChatCompletionsFunctionToolCall) toolCall).getFunction().getName())
-			.map(functionName -> Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
-			.anyMatch(functionCallback -> functionCallback.map(FunctionCallback::returningFunction).orElse(false));
-	}
+	// @Override
+	// protected boolean hasReturningFunction(ChatRequestMessage responseMessage) {
+	// return ((ChatRequestAssistantMessage) responseMessage).getToolCalls()
+	// .stream()
+	// .map(toolCall -> ((ChatCompletionsFunctionToolCall)
+	// toolCall).getFunction().getName())
+	// .map(functionName ->
+	// Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
+	// .anyMatch(functionCallback ->
+	// functionCallback.map(FunctionCallback::returningFunction).orElse(false));
+	// }
 
 	@Override
-	protected ChatCompletionsOptions doCreateToolResponseRequest(ChatCompletionsOptions previousRequest,
+	protected Optional<ChatCompletionsOptions> doCreateToolResponseRequest(ChatCompletionsOptions previousRequest,
 			ChatRequestMessage responseMessage, List<ChatRequestMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
+
+		boolean hasNonVoidFunction = false;
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -550,7 +555,14 @@ public class AzureOpenAiChatClient
 				// Add the function response to the conversation.
 				conversationHistory
 					.add(new ChatRequestToolMessage(functionResponse.functionResult(), toolCall.getId()));
+				hasNonVoidFunction = true;
 			}
+
+		}
+
+		if (hasNonVoidFunction == false) {
+			// If all functions are void, then there is no need to call the model again.
+			return Optional.empty();
 		}
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
@@ -559,7 +571,7 @@ public class AzureOpenAiChatClient
 
 		newRequest = merge(previousRequest, newRequest);
 
-		return newRequest;
+		return Optional.of(newRequest);
 	}
 
 	@Override

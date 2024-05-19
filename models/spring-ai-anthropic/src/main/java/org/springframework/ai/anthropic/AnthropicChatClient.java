@@ -394,20 +394,24 @@ public class AnthropicChatClient extends
 
 	}
 
-	@Override
-	protected boolean hasReturningFunction(RequestMessage responseMessage) {
-		return responseMessage.content()
-			.stream()
-			.filter(c -> c.type() == MediaContent.Type.TOOL_USE)
-			.map(MediaContent::name)
-			.map(functionName -> Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
-			.anyMatch(functionCallback -> functionCallback.map(FunctionCallback::returningFunction).orElse(false));
-	}
+	// @Override
+	// protected boolean hasReturningFunction(RequestMessage responseMessage) {
+	// return responseMessage.content()
+	// .stream()
+	// .filter(c -> c.type() == MediaContent.Type.TOOL_USE)
+	// .map(MediaContent::name)
+	// .map(functionName ->
+	// Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
+	// .anyMatch(functionCallback ->
+	// functionCallback.map(FunctionCallback::returningFunction).orElse(false));
+	// }
 
 	@Override
-	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
+	protected Optional<ChatCompletionRequest> doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
 			RequestMessage responseMessage, List<RequestMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
+
+		boolean hasNonVoidFunction = false;
 
 		List<MediaContent> toolToUseList = responseMessage.content()
 			.stream()
@@ -434,7 +438,13 @@ public class AnthropicChatClient extends
 			// .call(ModelOptionsUtils.toJsonString(functionArguments));
 			if (!functionResponse.isVoid()) {
 				toolResults.add(new MediaContent(Type.TOOL_RESULT, functionCallId, functionResponse.functionResult()));
+				hasNonVoidFunction = true;
 			}
+		}
+
+		if (hasNonVoidFunction == false) {
+			// If all functions are void, then there is no need to call the model again.
+			return Optional.empty();
 		}
 
 		// Add the function response to the conversation.
@@ -442,7 +452,7 @@ public class AnthropicChatClient extends
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
 		// functions anymore.
-		return ChatCompletionRequest.from(previousRequest).withMessages(conversationHistory).build();
+		return Optional.of(ChatCompletionRequest.from(previousRequest).withMessages(conversationHistory).build());
 	}
 
 	@Override

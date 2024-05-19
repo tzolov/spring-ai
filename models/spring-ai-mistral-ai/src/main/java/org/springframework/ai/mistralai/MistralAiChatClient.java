@@ -240,21 +240,23 @@ public class MistralAiChatClient extends
 		}).toList();
 	}
 
-	@Override
-	protected boolean hasReturningFunction(ChatCompletionMessage responseMessage) {
-		return responseMessage.toolCalls()
-			.stream()
-			.map(toolCall -> toolCall.function().name())
-			.map(functionName -> Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
-			.anyMatch(functionCallback -> functionCallback.map(FunctionCallback::returningFunction).orElse(false));
-	}
+	// @Override
+	// protected boolean hasReturningFunction(ChatCompletionMessage responseMessage) {
+	// return responseMessage.toolCalls()
+	// .stream()
+	// .map(toolCall -> toolCall.function().name())
+	// .map(functionName ->
+	// Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
+	// .anyMatch(functionCallback ->
+	// functionCallback.map(FunctionCallback::returningFunction).orElse(false));
+	// }
 
 	@Override
-	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
+	protected Optional<ChatCompletionRequest> doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
 			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
 
-		boolean hasDataToResponse = false;
+		boolean hasNonVoidFunction = false;
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -277,14 +279,14 @@ public class MistralAiChatClient extends
 				// Add the function response to the conversation.
 				conversationHistory.add(new ChatCompletionMessage(functionResponse.functionResult(),
 						ChatCompletionMessage.Role.TOOL, functionName, null, id));
-				hasDataToResponse = true;
+				hasNonVoidFunction = true;
 			}
 
 		}
 
-		if (!hasDataToResponse) {
-			// If there is no data to response, return the previous request.
-			return previousRequest;
+		if (hasNonVoidFunction == false) {
+			// If all functions are void, then there is no need to call the model again.
+			return Optional.empty();
 		}
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
@@ -292,7 +294,7 @@ public class MistralAiChatClient extends
 		ChatCompletionRequest newRequest = new ChatCompletionRequest(conversationHistory, previousRequest.stream());
 		newRequest = ModelOptionsUtils.merge(newRequest, previousRequest, ChatCompletionRequest.class);
 
-		return newRequest;
+		return Optional.of(newRequest);
 	}
 
 	@Override

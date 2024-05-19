@@ -409,18 +409,21 @@ public class VertexAiGeminiChatClient
 		}
 	}
 
-	@Override
-	protected boolean hasReturningFunction(Content responseMessage) {
-		final var functionName = responseMessage.getPartsList().get(0).getFunctionCall().getName();
-		return Optional.ofNullable(this.functionCallbackRegister.get(functionName))
-			.map(FunctionCallback::returningFunction)
-			.orElse(false);
-	}
+	// @Override
+	// protected boolean hasReturningFunction(Content responseMessage) {
+	// final var functionName =
+	// responseMessage.getPartsList().get(0).getFunctionCall().getName();
+	// return Optional.ofNullable(this.functionCallbackRegister.get(functionName))
+	// .map(FunctionCallback::returningFunction)
+	// .orElse(false);
+	// }
 
 	@Override
-	protected GeminiRequest doCreateToolResponseRequest(GeminiRequest previousRequest, Content responseMessage,
-			List<Content> conversationHistory,
+	protected Optional<GeminiRequest> doCreateToolResponseRequest(GeminiRequest previousRequest,
+			Content responseMessage, List<Content> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
+
+		boolean hasNonVoidFunction = false;
 
 		FunctionCall functionCall = responseMessage.getPartsList().iterator().next().getFunctionCall();
 
@@ -447,9 +450,14 @@ public class VertexAiGeminiChatClient
 				.build();
 
 			conversationHistory.add(contentFnResp);
+			hasNonVoidFunction = true;
 		}
 
-		return new GeminiRequest(conversationHistory, previousRequest.model());
+		if (hasNonVoidFunction) {
+			return Optional.of(new GeminiRequest(conversationHistory, previousRequest.model()));
+		}
+
+		return Optional.of(new GeminiRequest(conversationHistory, previousRequest.model()));
 	}
 
 	@Override

@@ -326,19 +326,23 @@ public class OpenAiChatClient extends
 		}).toList();
 	}
 
-	@Override
-	protected boolean hasReturningFunction(ChatCompletionMessage responseMessage) {
-		return responseMessage.toolCalls()
-			.stream()
-			.map(toolCall -> toolCall.function().name())
-			.map(functionName -> Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
-			.anyMatch(functionCallback -> functionCallback.map(FunctionCallback::returningFunction).orElse(false));
-	}
+	// @Override
+	// protected boolean hasReturningFunction(ChatCompletionMessage responseMessage) {
+	// return responseMessage.toolCalls()
+	// .stream()
+	// .map(toolCall -> toolCall.function().name())
+	// .map(functionName ->
+	// Optional.ofNullable(this.functionCallbackRegister.get(functionName)))
+	// .anyMatch(functionCallback ->
+	// functionCallback.map(FunctionCallback::returningFunction).orElse(false));
+	// }
 
 	@Override
-	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
+	protected Optional<ChatCompletionRequest> doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
 			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
+
+		boolean hasNonVoidFunction = false;
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -360,7 +364,13 @@ public class OpenAiChatClient extends
 				// Add the function response to the conversation.
 				conversationHistory.add(new ChatCompletionMessage(functionResponse.functionResult(), Role.TOOL,
 						functionName, toolCall.id(), null));
+				hasNonVoidFunction = true;
 			}
+		}
+
+		if (hasNonVoidFunction == false) {
+			// If all functions are void, then there is no need to call the model again.
+			return Optional.empty();
 		}
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
@@ -368,7 +378,7 @@ public class OpenAiChatClient extends
 		ChatCompletionRequest newRequest = new ChatCompletionRequest(conversationHistory, previousRequest.stream());
 		newRequest = ModelOptionsUtils.merge(newRequest, previousRequest, ChatCompletionRequest.class);
 
-		return newRequest;
+		return Optional.of(newRequest);
 	}
 
 	@Override
