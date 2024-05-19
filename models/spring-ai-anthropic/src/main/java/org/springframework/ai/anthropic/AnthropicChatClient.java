@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -405,7 +406,8 @@ public class AnthropicChatClient extends
 
 	@Override
 	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
-			RequestMessage responseMessage, List<RequestMessage> conversationHistory) {
+			RequestMessage responseMessage, List<RequestMessage> conversationHistory,
+			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
 
 		List<MediaContent> toolToUseList = responseMessage.content()
 			.stream()
@@ -420,14 +422,18 @@ public class AnthropicChatClient extends
 			var functionName = toolToUse.name();
 			var functionArguments = toolToUse.input();
 
-			if (!this.functionCallbackRegister.containsKey(functionName)) {
-				throw new IllegalStateException("No function callback found for function name: " + functionName);
-			}
+			InternalFunctionResponse functionResponse = functionCallHandler
+				.apply(new InternalFunctionRequest(functionName, ModelOptionsUtils.toJsonString(functionArguments)));
 
-			String functionResponse = this.functionCallbackRegister.get(functionName)
-				.call(ModelOptionsUtils.toJsonString(functionArguments));
-			if (functionResponse != null) {
-				toolResults.add(new MediaContent(Type.TOOL_RESULT, functionCallId, functionResponse));
+			// if (!this.functionCallbackRegister.containsKey(functionName)) {
+			// throw new IllegalStateException("No function callback found for function
+			// name: " + functionName);
+			// }
+
+			// String functionResponse = this.functionCallbackRegister.get(functionName)
+			// .call(ModelOptionsUtils.toJsonString(functionArguments));
+			if (!functionResponse.isVoid()) {
+				toolResults.add(new MediaContent(Type.TOOL_RESULT, functionCallId, functionResponse.functionResult()));
 			}
 		}
 

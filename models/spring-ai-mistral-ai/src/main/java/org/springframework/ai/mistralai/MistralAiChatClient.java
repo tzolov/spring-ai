@@ -44,6 +44,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * @author Ricken Bazolo
@@ -250,7 +251,11 @@ public class MistralAiChatClient extends
 
 	@Override
 	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
-			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory) {
+			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory,
+			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
+
+		boolean hasDataToResponse = false;
+
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
 		for (ToolCall toolCall : responseMessage.toolCalls()) {
@@ -259,17 +264,27 @@ public class MistralAiChatClient extends
 			String functionName = toolCall.function().name();
 			String functionArguments = toolCall.function().arguments();
 
-			if (!this.functionCallbackRegister.containsKey(functionName)) {
-				throw new IllegalStateException("No function callback found for function name: " + functionName);
-			}
+			InternalFunctionResponse functionResponse = functionCallHandler
+				.apply(new InternalFunctionRequest(functionName, functionArguments));
+			// if (!this.functionCallbackRegister.containsKey(functionName)) {
+			// throw new IllegalStateException("No function callback found for function
+			// name: " + functionName);
+			// }
 
-			String functionResponse = this.functionCallbackRegister.get(functionName).call(functionArguments);
-			if (functionResponse != null) {
+			// String functionResponse =
+			// this.functionCallbackRegister.get(functionName).call(functionArguments);
+			if (!functionResponse.isVoid()) {
 				// Add the function response to the conversation.
-				conversationHistory.add(new ChatCompletionMessage(functionResponse, ChatCompletionMessage.Role.TOOL,
-						functionName, null, id));
+				conversationHistory.add(new ChatCompletionMessage(functionResponse.functionResult(),
+						ChatCompletionMessage.Role.TOOL, functionName, null, id));
+				hasDataToResponse = true;
 			}
 
+		}
+
+		if (!hasDataToResponse) {
+			// If there is no data to response, return the previous request.
+			return previousRequest;
 		}
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a

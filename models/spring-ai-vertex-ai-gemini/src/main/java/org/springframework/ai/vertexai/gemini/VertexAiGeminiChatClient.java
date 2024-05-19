@@ -60,6 +60,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -418,24 +419,29 @@ public class VertexAiGeminiChatClient
 
 	@Override
 	protected GeminiRequest doCreateToolResponseRequest(GeminiRequest previousRequest, Content responseMessage,
-			List<Content> conversationHistory) {
+			List<Content> conversationHistory,
+			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
 
 		FunctionCall functionCall = responseMessage.getPartsList().iterator().next().getFunctionCall();
 
 		var functionName = functionCall.getName();
 		String functionArguments = structToJson(functionCall.getArgs());
 
-		if (!this.functionCallbackRegister.containsKey(functionName)) {
-			throw new IllegalStateException("No function callback found for function name: " + functionName);
-		}
+		InternalFunctionResponse functionResponse = functionCallHandler
+			.apply(new InternalFunctionRequest(functionName, functionArguments));
+		// if (!this.functionCallbackRegister.containsKey(functionName)) {
+		// throw new IllegalStateException("No function callback found for function name:
+		// " + functionName);
+		// }
 
-		String functionResponse = this.functionCallbackRegister.get(functionName).call(functionArguments);
-		if (functionResponse != null) {
+		// String functionResponse =
+		// this.functionCallbackRegister.get(functionName).call(functionArguments);
+		if (!functionResponse.isVoid()) {
 			Content contentFnResp = Content.newBuilder()
 				.addParts(Part.newBuilder()
 					.setFunctionResponse(FunctionResponse.newBuilder()
 						.setName(functionCall.getName())
-						.setResponse(jsonToStruct(functionResponse))
+						.setResponse(jsonToStruct(functionResponse.functionResult()))
 						.build())
 					.build())
 				.build();

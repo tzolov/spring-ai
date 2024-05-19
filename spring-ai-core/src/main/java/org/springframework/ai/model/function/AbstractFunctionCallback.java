@@ -113,7 +113,7 @@ abstract class AbstractFunctionCallback<I, O> implements Function<I, O>, Functio
 		I request = fromJson(functionArguments, inputType);
 
 		// extend conversation with function response.
-		if (outputType.isAssignableFrom(Void.class)) {
+		if (!returningFunction()) {
 			this.apply(request);
 			return null;
 		}

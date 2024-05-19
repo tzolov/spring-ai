@@ -15,6 +15,14 @@
  */
 package org.springframework.ai.azure.openai;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+
 import com.azure.ai.openai.OpenAIClient;
 import com.azure.ai.openai.models.ChatChoice;
 import com.azure.ai.openai.models.ChatCompletions;
@@ -28,7 +36,6 @@ import com.azure.ai.openai.models.ChatRequestMessage;
 import com.azure.ai.openai.models.ChatRequestSystemMessage;
 import com.azure.ai.openai.models.ChatRequestToolMessage;
 import com.azure.ai.openai.models.ChatRequestUserMessage;
-import com.azure.ai.openai.models.ChatResponseMessage;
 import com.azure.ai.openai.models.CompletionsFinishReason;
 import com.azure.ai.openai.models.ContentFilterResultsForPrompt;
 import com.azure.ai.openai.models.FunctionCall;
@@ -37,6 +44,7 @@ import com.azure.core.util.BinaryData;
 import com.azure.core.util.IterableStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 
 import org.springframework.ai.azure.openai.metadata.AzureOpenAiChatResponseMetadata;
 import org.springframework.ai.chat.ChatClient;
@@ -55,14 +63,6 @@ import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
-import reactor.core.publisher.Flux;
-
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * {@link ChatClient} implementation for {@literal Microsoft Azure AI} backed by
@@ -526,7 +526,8 @@ public class AzureOpenAiChatClient
 
 	@Override
 	protected ChatCompletionsOptions doCreateToolResponseRequest(ChatCompletionsOptions previousRequest,
-			ChatRequestMessage responseMessage, List<ChatRequestMessage> conversationHistory) {
+			ChatRequestMessage responseMessage, List<ChatRequestMessage> conversationHistory,
+			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -535,15 +536,20 @@ public class AzureOpenAiChatClient
 			var functionName = ((ChatCompletionsFunctionToolCall) toolCall).getFunction().getName();
 			String functionArguments = ((ChatCompletionsFunctionToolCall) toolCall).getFunction().getArguments();
 
-			if (!this.functionCallbackRegister.containsKey(functionName)) {
-				throw new IllegalStateException("No function callback found for function name: " + functionName);
-			}
+			InternalFunctionResponse functionResponse = functionCallHandler
+				.apply(new InternalFunctionRequest(functionName, functionArguments));
+			// if (!this.functionCallbackRegister.containsKey(functionName)) {
+			// throw new IllegalStateException("No function callback found for function
+			// name: " + functionName);
+			// }
 
-			String functionResponse = this.functionCallbackRegister.get(functionName).call(functionArguments);
+			// String functionResponse =
+			// this.functionCallbackRegister.get(functionName).call(functionArguments);
 
-			if (functionResponse != null) {
+			if (!functionResponse.isVoid()) {
 				// Add the function response to the conversation.
-				conversationHistory.add(new ChatRequestToolMessage(functionResponse, toolCall.getId()));
+				conversationHistory
+					.add(new ChatRequestToolMessage(functionResponse.functionResult(), toolCall.getId()));
 			}
 		}
 

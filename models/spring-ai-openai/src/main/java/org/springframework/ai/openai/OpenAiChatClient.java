@@ -57,6 +57,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * {@link ChatClient} and {@link StreamingChatClient} implementation for {@literal OpenAI}
@@ -336,7 +337,8 @@ public class OpenAiChatClient extends
 
 	@Override
 	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
-			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory) {
+			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory,
+			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -345,15 +347,19 @@ public class OpenAiChatClient extends
 			var functionName = toolCall.function().name();
 			String functionArguments = toolCall.function().arguments();
 
-			if (!this.functionCallbackRegister.containsKey(functionName)) {
-				throw new IllegalStateException("No function callback found for function name: " + functionName);
-			}
+			InternalFunctionResponse functionResponse = functionCallHandler
+				.apply(new InternalFunctionRequest(functionName, functionArguments));
+			// if (!this.functionCallbackRegister.containsKey(functionName)) {
+			// throw new IllegalStateException("No function callback found for function
+			// name: " + functionName);
+			// }
 
-			String functionResponse = this.functionCallbackRegister.get(functionName).call(functionArguments);
-			if (functionResponse != null) {
+			// String functionResponse =
+			// this.functionCallbackRegister.get(functionName).call(functionArguments);
+			if (!functionResponse.isVoid()) {
 				// Add the function response to the conversation.
-				conversationHistory
-					.add(new ChatCompletionMessage(functionResponse, Role.TOOL, functionName, toolCall.id(), null));
+				conversationHistory.add(new ChatCompletionMessage(functionResponse.functionResult(), Role.TOOL,
+						functionName, toolCall.id(), null));
 			}
 		}
 

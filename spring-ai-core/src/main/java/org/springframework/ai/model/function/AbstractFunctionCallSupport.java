@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * @author Christian Tzolov
@@ -142,7 +143,8 @@ public abstract class AbstractFunctionCallSupport<Msg, Req, Resp> {
 		// Add the assistant response to the message conversation history.
 		conversationHistory.add(responseMessage);
 
-		Req newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory);
+		Req newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory,
+				this.functionCallHandler);
 
 		if (!this.hasReturningFunction(responseMessage)) {
 			return response;
@@ -173,7 +175,8 @@ public abstract class AbstractFunctionCallSupport<Msg, Req, Resp> {
 			// Add the assistant response to the message conversation history.
 			conversationHistory.add(responseMessage);
 
-			Req newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory);
+			Req newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory,
+					this.functionCallHandler);
 
 			return this.callWithFunctionSupportStream(newRequest);
 		});
@@ -182,8 +185,27 @@ public abstract class AbstractFunctionCallSupport<Msg, Req, Resp> {
 
 	abstract protected boolean hasReturningFunction(Msg responseMessage);
 
+	public record InternalFunctionRequest(String functionName, String functionArguments) {
+	}
+
+	public record InternalFunctionResponse(boolean isVoid, String functionResult) {
+	}
+
+	Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler = (functionRequest) -> {
+
+		FunctionCallback functionCallback = this.functionCallbackRegister.get(functionRequest.functionName());
+		if (functionCallback == null) {
+			throw new IllegalStateException("No function callback found for name: " + functionRequest.functionName());
+		}
+
+		String result = functionCallback.call(functionRequest.functionArguments());
+
+		return new InternalFunctionResponse(!functionCallback.returningFunction(), result);
+	};
+
 	abstract protected Req doCreateToolResponseRequest(Req previousRequest, Msg responseMessage,
-			List<Msg> conversationHistory);
+			List<Msg> conversationHistory,
+			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler);
 
 	abstract protected List<Msg> doGetUserMessages(Req request);
 
