@@ -15,8 +15,19 @@
  */
 package org.springframework.ai.mistralai;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+
 import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.ChatResponse;
 import org.springframework.ai.chat.Generation;
@@ -33,18 +44,12 @@ import org.springframework.ai.mistralai.api.MistralAiApi.ChatCompletionMessage.T
 import org.springframework.ai.mistralai.api.MistralAiApi.ChatCompletionRequest;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.function.AbstractFunctionCallSupport;
-import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
-import reactor.core.publisher.Flux;
-
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * @author Ricken Bazolo
@@ -252,11 +257,9 @@ public class MistralAiChatClient extends
 	// }
 
 	@Override
-	protected Optional<ChatCompletionRequest> doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
+	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
 			ChatCompletionMessage responseMessage, List<ChatCompletionMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
-
-		boolean hasNonVoidFunction = false;
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -275,18 +278,11 @@ public class MistralAiChatClient extends
 
 			// String functionResponse =
 			// this.functionCallbackRegister.get(functionName).call(functionArguments);
-			if (!functionResponse.isVoid()) {
-				// Add the function response to the conversation.
-				conversationHistory.add(new ChatCompletionMessage(functionResponse.functionResult(),
-						ChatCompletionMessage.Role.TOOL, functionName, null, id));
-				hasNonVoidFunction = true;
-			}
+			String responseMessageContent = functionResponse.isVoid() ? "DONE" : functionResponse.functionResult();
 
-		}
-
-		if (hasNonVoidFunction == false) {
-			// If all functions are void, then there is no need to call the model again.
-			return Optional.empty();
+			// Add the function response to the conversation.
+			conversationHistory.add(new ChatCompletionMessage(responseMessageContent, ChatCompletionMessage.Role.TOOL,
+					functionName, null, id));
 		}
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
@@ -294,7 +290,7 @@ public class MistralAiChatClient extends
 		ChatCompletionRequest newRequest = new ChatCompletionRequest(conversationHistory, previousRequest.stream());
 		newRequest = ModelOptionsUtils.merge(newRequest, previousRequest, ChatCompletionRequest.class);
 
-		return Optional.of(newRequest);
+		return newRequest;
 	}
 
 	@Override

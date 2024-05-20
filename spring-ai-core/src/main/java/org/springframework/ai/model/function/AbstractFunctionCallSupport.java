@@ -15,18 +15,18 @@
  */
 package org.springframework.ai.model.function;
 
-import org.springframework.util.CollectionUtils;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import org.springframework.util.CollectionUtils;
 
 /**
  * @author Christian Tzolov
@@ -144,14 +144,10 @@ public abstract class AbstractFunctionCallSupport<Msg, Req, Resp> {
 		// Add the assistant response to the message conversation history.
 		conversationHistory.add(responseMessage);
 
-		Optional<Req> newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory,
+		Req newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory,
 				this.functionCallHandler);
 
-		if (newRequest.isEmpty()) {
-			return response;
-		}
-
-		return this.callWithFunctionSupport(newRequest.get());
+		return this.callWithFunctionSupport(newRequest);
 	}
 
 	protected Flux<Resp> callWithFunctionSupportStream(Req request) {
@@ -177,10 +173,10 @@ public abstract class AbstractFunctionCallSupport<Msg, Req, Resp> {
 			// Add the assistant response to the message conversation history.
 			conversationHistory.add(responseMessage);
 
-			Optional<Req> newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory,
+			Req newRequest = this.doCreateToolResponseRequest(request, responseMessage, conversationHistory,
 					this.functionCallHandler);
 
-			return this.callWithFunctionSupportStream(newRequest.get());
+			return this.callWithFunctionSupportStream(newRequest);
 		});
 
 	}
@@ -205,7 +201,7 @@ public abstract class AbstractFunctionCallSupport<Msg, Req, Resp> {
 		return new InternalFunctionResponse(!functionCallback.returningFunction(), result);
 	};
 
-	abstract protected Optional<Req> doCreateToolResponseRequest(Req previousRequest, Msg responseMessage,
+	abstract protected Req doCreateToolResponseRequest(Req previousRequest, Msg responseMessage,
 			List<Msg> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler);
 

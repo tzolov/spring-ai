@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.azure.ai.openai.OpenAIClient;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 
 import org.springframework.ai.azure.openai.AzureOpenAiChatClient;
 import org.springframework.ai.azure.openai.AzureOpenAiChatOptions;
@@ -42,7 +44,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
-import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -60,7 +61,7 @@ class AzureOpenAiChatClientFunctionCallIT {
 	private AzureOpenAiChatClient chatClient;
 
 	@Test
-	void functionCallTest() {
+	void syncFunctionCallTest() {
 
 		UserMessage userMessage = new UserMessage("What's the weather like in San Francisco, in Tokyo, and in Paris?");
 
@@ -119,26 +120,101 @@ class AzureOpenAiChatClientFunctionCallIT {
 	}
 
 	@Test
-	void functionCallWithoutCompleteRoundTrip() {
+	void syncFunctionCallWithVoidFunction() {
 
-		UserMessage userMessage = new UserMessage("What's the weather like in San Francisco?");
+		UserMessage userMessage = new UserMessage(
+				"Please cancel flight reservations with booking IDs 104, 107 and 213 and then find what's the weather like in San Francisco");
 
 		List<Message> messages = new ArrayList<>(List.of(userMessage));
 
-		final var spyingMockWeatherService = new SpyingMockWeatherService();
+		final var mockFlightBookingService = new MockFlightService();
 		var promptOptions = AzureOpenAiChatOptions.builder()
 			.withDeploymentName(selectedModel)
-			.withFunctionCallbacks(List.of(FunctionCallbackWrapper.builder(spyingMockWeatherService)
-				.withName("getCurrentWeather")
-				.withDescription("Get the current weather in a given location")
-				.build()))
+			.withFunctionCallbacks(List.of(
+					FunctionCallbackWrapper.builder(new MockWeatherService())
+						.withName("getCurrentWeather")
+						.withDescription("Provides the current weather in a given location")
+						.withResponseConverter((response) -> "" + response.temp() + response.unit())
+						.build(),
+					FunctionCallbackWrapper.builder(mockFlightBookingService)
+						.withName("cancelFlightReservation")
+						.withDescription("Manages flight reservation cancellation")
+						.build()))
 			.build();
 
 		ChatResponse response = chatClient.call(new Prompt(messages, promptOptions));
 
-		logger.info("Response: {}", response);
-		final var interceptedRequest = spyingMockWeatherService.getInterceptedRequest();
-		assertThat(interceptedRequest.location()).containsIgnoringCase("San Francisco");
+		logger.info("Response: {}", response.getResult().getOutput().getContent());
+		final var interceptedRequests = mockFlightBookingService.getInterceptedRequests();
+		assertThat(interceptedRequests).hasSize(3);
+		assertThat(interceptedRequests.get(0).bookingId()).containsIgnoringCase("104");
+		assertThat(interceptedRequests.get(1).bookingId()).containsIgnoringCase("107");
+		assertThat(interceptedRequests.get(2).bookingId()).containsIgnoringCase("213");
+
+		assertThat(response.getResult().getOutput().getContent()).containsAnyOf("30.0", "30");
+	}
+
+	@Test
+	void streamFunctionCallWithVoidFunction() {
+
+		UserMessage userMessage = new UserMessage(
+				"Please cancel flight reservations with booking IDs 104, 107 and 213 and then find what's the weather like in San Francisco");
+
+		List<Message> messages = new ArrayList<>(List.of(userMessage));
+
+		final var mockFlightBookingService = new MockFlightService();
+		var promptOptions = AzureOpenAiChatOptions.builder()
+			.withDeploymentName(selectedModel)
+			.withFunctionCallbacks(List.of(
+					FunctionCallbackWrapper.builder(new MockWeatherService())
+						.withName("getCurrentWeather")
+						.withDescription("Provides the current weather in a given location")
+						.withResponseConverter((response) -> "" + response.temp() + response.unit())
+						.build(),
+					FunctionCallbackWrapper.builder(mockFlightBookingService)
+						.withName("cancelFlightReservation")
+						.withDescription("Manages flight reservation cancellation")
+						.build()))
+			.build();
+
+		Flux<ChatResponse> response = chatClient.stream(new Prompt(messages, promptOptions));
+
+		String content = response.collectList()
+			.block()
+			.stream()
+			.map(ChatResponse::getResults)
+			.flatMap(List::stream)
+			.map(Generation::getOutput)
+			.map(AssistantMessage::getContent)
+			.collect(Collectors.joining());
+
+		logger.info("Response: {}", content);
+		final var interceptedRequests = mockFlightBookingService.getInterceptedRequests();
+		assertThat(interceptedRequests).hasSize(3);
+		assertThat(interceptedRequests.get(0).bookingId()).containsIgnoringCase("104");
+		assertThat(interceptedRequests.get(1).bookingId()).containsIgnoringCase("107");
+		assertThat(interceptedRequests.get(2).bookingId()).containsIgnoringCase("213");
+
+		assertThat(content).containsAnyOf("30.0", "30");
+	}
+
+	public record FlightRequest(String bookingId) {
+	}
+
+	public static class MockFlightService implements Function<FlightRequest, Void> {
+
+		private List<FlightRequest> interceptedRequests = new ArrayList<>();
+
+		@Override
+		public Void apply(FlightRequest request) {
+			interceptedRequests.add(request);
+			return null;
+		}
+
+		public List<FlightRequest> getInterceptedRequests() {
+			return interceptedRequests;
+		}
+
 	}
 
 	@SpringBootConfiguration

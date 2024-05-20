@@ -20,7 +20,6 @@ import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -50,7 +49,6 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.function.AbstractFunctionCallSupport;
-import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.http.ResponseEntity;
@@ -407,11 +405,9 @@ public class AnthropicChatClient extends
 	// }
 
 	@Override
-	protected Optional<ChatCompletionRequest> doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
+	protected ChatCompletionRequest doCreateToolResponseRequest(ChatCompletionRequest previousRequest,
 			RequestMessage responseMessage, List<RequestMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
-
-		boolean hasNonVoidFunction = false;
 
 		List<MediaContent> toolToUseList = responseMessage.content()
 			.stream()
@@ -436,15 +432,10 @@ public class AnthropicChatClient extends
 
 			// String functionResponse = this.functionCallbackRegister.get(functionName)
 			// .call(ModelOptionsUtils.toJsonString(functionArguments));
-			if (!functionResponse.isVoid()) {
-				toolResults.add(new MediaContent(Type.TOOL_RESULT, functionCallId, functionResponse.functionResult()));
-				hasNonVoidFunction = true;
-			}
-		}
 
-		if (hasNonVoidFunction == false) {
-			// If all functions are void, then there is no need to call the model again.
-			return Optional.empty();
+			String responseMessageContent = functionResponse.isVoid() ? "DONE" : functionResponse.functionResult();
+
+			toolResults.add(new MediaContent(Type.TOOL_RESULT, functionCallId, responseMessageContent));
 		}
 
 		// Add the function response to the conversation.
@@ -452,7 +443,7 @@ public class AnthropicChatClient extends
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
 		// functions anymore.
-		return Optional.of(ChatCompletionRequest.from(previousRequest).withMessages(conversationHistory).build());
+		return ChatCompletionRequest.from(previousRequest).withMessages(conversationHistory).build();
 	}
 
 	@Override

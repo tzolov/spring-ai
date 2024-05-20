@@ -15,6 +15,13 @@
  */
 package org.springframework.ai.vertexai.gemini;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.google.cloud.vertexai.VertexAI;
@@ -32,6 +39,8 @@ import com.google.cloud.vertexai.generativeai.PartMaker;
 import com.google.cloud.vertexai.generativeai.ResponseStream;
 import com.google.protobuf.Struct;
 import com.google.protobuf.util.JsonFormat;
+import reactor.core.publisher.Flux;
+
 import org.springframework.ai.chat.ChatClient;
 import org.springframework.ai.chat.ChatResponse;
 import org.springframework.ai.chat.Generation;
@@ -44,7 +53,6 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.function.AbstractFunctionCallSupport;
-import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.vertexai.gemini.metadata.VertexAiChatResponseMetadata;
 import org.springframework.ai.vertexai.gemini.metadata.VertexAiUsage;
@@ -53,15 +61,6 @@ import org.springframework.lang.NonNull;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
-import reactor.core.publisher.Flux;
-
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * @author Christian Tzolov
@@ -419,11 +418,9 @@ public class VertexAiGeminiChatClient
 	// }
 
 	@Override
-	protected Optional<GeminiRequest> doCreateToolResponseRequest(GeminiRequest previousRequest,
-			Content responseMessage, List<Content> conversationHistory,
+	protected GeminiRequest doCreateToolResponseRequest(GeminiRequest previousRequest, Content responseMessage,
+			List<Content> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
-
-		boolean hasNonVoidFunction = false;
 
 		FunctionCall functionCall = responseMessage.getPartsList().iterator().next().getFunctionCall();
 
@@ -439,25 +436,21 @@ public class VertexAiGeminiChatClient
 
 		// String functionResponse =
 		// this.functionCallbackRegister.get(functionName).call(functionArguments);
-		if (!functionResponse.isVoid()) {
-			Content contentFnResp = Content.newBuilder()
-				.addParts(Part.newBuilder()
-					.setFunctionResponse(FunctionResponse.newBuilder()
-						.setName(functionCall.getName())
-						.setResponse(jsonToStruct(functionResponse.functionResult()))
-						.build())
+
+		String responseMessageContent = functionResponse.isVoid() ? "DONE" : functionResponse.functionResult();
+
+		Content contentFnResp = Content.newBuilder()
+			.addParts(Part.newBuilder()
+				.setFunctionResponse(FunctionResponse.newBuilder()
+					.setName(functionCall.getName())
+					.setResponse(jsonToStruct(responseMessageContent))
 					.build())
-				.build();
+				.build())
+			.build();
 
-			conversationHistory.add(contentFnResp);
-			hasNonVoidFunction = true;
-		}
+		conversationHistory.add(contentFnResp);
 
-		if (hasNonVoidFunction) {
-			return Optional.of(new GeminiRequest(conversationHistory, previousRequest.model()));
-		}
-
-		return Optional.of(new GeminiRequest(conversationHistory, previousRequest.model()));
+		return new GeminiRequest(conversationHistory, previousRequest.model());
 	}
 
 	@Override

@@ -59,7 +59,6 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.function.AbstractFunctionCallSupport;
-import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
@@ -528,11 +527,9 @@ public class AzureOpenAiChatClient
 	// }
 
 	@Override
-	protected Optional<ChatCompletionsOptions> doCreateToolResponseRequest(ChatCompletionsOptions previousRequest,
+	protected ChatCompletionsOptions doCreateToolResponseRequest(ChatCompletionsOptions previousRequest,
 			ChatRequestMessage responseMessage, List<ChatRequestMessage> conversationHistory,
 			Function<InternalFunctionRequest, InternalFunctionResponse> functionCallHandler) {
-
-		boolean hasNonVoidFunction = false;
 
 		// Every tool-call item requires a separate function call and a response (TOOL)
 		// message.
@@ -551,18 +548,10 @@ public class AzureOpenAiChatClient
 			// String functionResponse =
 			// this.functionCallbackRegister.get(functionName).call(functionArguments);
 
-			if (!functionResponse.isVoid()) {
-				// Add the function response to the conversation.
-				conversationHistory
-					.add(new ChatRequestToolMessage(functionResponse.functionResult(), toolCall.getId()));
-				hasNonVoidFunction = true;
-			}
+			String responseMessageContent = functionResponse.isVoid() ? "DONE" : functionResponse.functionResult();
 
-		}
-
-		if (hasNonVoidFunction == false) {
-			// If all functions are void, then there is no need to call the model again.
-			return Optional.empty();
+			// Add the function response to the conversation.
+			conversationHistory.add(new ChatRequestToolMessage(responseMessageContent, toolCall.getId()));
 		}
 
 		// Recursively call chatCompletionWithTools until the model doesn't call a
@@ -571,7 +560,7 @@ public class AzureOpenAiChatClient
 
 		newRequest = merge(previousRequest, newRequest);
 
-		return Optional.of(newRequest);
+		return newRequest;
 	}
 
 	@Override
