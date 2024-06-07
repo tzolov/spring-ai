@@ -17,16 +17,15 @@ package org.springframework.ai.chat.client;
 
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import io.micrometer.observation.ObservationRegistry;
 import reactor.core.publisher.Flux;
 
 import org.springframework.ai.chat.messages.Media;
 import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -50,11 +49,19 @@ import org.springframework.util.MimeType;
 public interface ChatClient {
 
 	static ChatClient create(ChatModel chatModel) {
-		return builder(chatModel).build();
+		return create(chatModel, ObservationRegistry.NOOP);
+	}
+
+	static ChatClient create(ChatModel chatModel, ObservationRegistry observationRegistry) {
+		return builder(chatModel, observationRegistry).build();
 	}
 
 	static Builder builder(ChatModel chatModel) {
-		return new DefaultChatClientBuilder(chatModel);
+		return builder(chatModel, ObservationRegistry.NOOP);
+	}
+
+	static Builder builder(ChatModel chatModel, ObservationRegistry observationRegistry) {
+		return new DefaultChatClientBuilder(chatModel, observationRegistry);
 	}
 
 	ChatClientRequestSpec prompt();

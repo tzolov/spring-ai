@@ -43,6 +43,7 @@ import org.springframework.ai.model.function.FunctionCallback;
  * @param systemParams the map of system parameters
  * @param advisors the list of request response advisors
  * @param advisorParams the map of advisor parameters
+ *
  */
 public record AdvisedRequest(ChatModel chatModel, String userText, String systemText, ChatOptions chatOptions,
 		List<Media> media, List<String> functionNames, List<FunctionCallback> functionCallbacks, List<Message> messages,

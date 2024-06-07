@@ -20,6 +20,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.Arrays;
 
+import io.micrometer.observation.annotation.Observed;
 import reactor.core.publisher.Flux;
 
 import org.springframework.ai.chat.messages.Message;
@@ -41,6 +42,7 @@ public interface ChatModel extends Model<Prompt, ChatResponse>, StreamingChatMod
 	}
 
 	@Override
+	@Observed(name = "chatCall")
 	ChatResponse call(Prompt prompt);
 
 	ChatOptions getDefaultOptions();

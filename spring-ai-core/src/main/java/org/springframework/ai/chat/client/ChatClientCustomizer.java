@@ -24,7 +24,7 @@ package org.springframework.ai.chat.client;
  * @author Mark Pollack
  * @author Josh Long
  * @author Arjen Poutsma
- * @since 1.0.0 M1
+ * @since 1.0.0
  */
 @FunctionalInterface
 public interface ChatClientCustomizer {

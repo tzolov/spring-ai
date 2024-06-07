@@ -16,6 +16,8 @@
 
 package org.springframework.ai.autoconfigure.chat.client;
 
+import io.micrometer.observation.ObservationRegistry;
+
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.client.ChatClientCustomizer;
@@ -42,7 +44,8 @@ import org.springframework.context.annotation.Scope;
  * @author Arjen Poutsma
  * @since 1.0.0
  */
-@AutoConfiguration
+@AutoConfiguration(
+		after = org.springframework.boot.actuate.autoconfigure.observation.ObservationAutoConfiguration.class)
 @ConditionalOnClass(ChatClient.class)
 @EnableConfigurationProperties(ChatClientBuilderProperties.class)
 @ConditionalOnProperty(prefix = ChatClientBuilderProperties.CONFIG_PREFIX, name = "enabled", havingValue = "true",
@@ -59,9 +62,16 @@ public class ChatClientAutoConfiguration {
 
 	@Bean
 	@Scope("prototype")
-	ChatClient.Builder chatClientBuilder(ChatClientBuilderConfigurer chatClientBuilderConfigurer, ChatModel chatModel) {
-		ChatClient.Builder builder = ChatClient.builder(chatModel);
+	ChatClient.Builder chatClientBuilder(ChatClientBuilderConfigurer chatClientBuilderConfigurer, ChatModel chatModel,
+			ObservationRegistry observationRegistry) {
+		ChatClient.Builder builder = ChatClient.builder(chatModel, observationRegistry);
 		return chatClientBuilderConfigurer.configure(builder);
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	ObservationRegistry observationRegistry() {
+		return ObservationRegistry.NOOP;
 	}
 
 }

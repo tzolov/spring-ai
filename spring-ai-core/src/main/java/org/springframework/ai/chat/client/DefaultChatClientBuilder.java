@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import io.micrometer.observation.ObservationRegistry;
+
 import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.chat.client.ChatClient.PromptSystemSpec;
 import org.springframework.ai.chat.client.ChatClient.PromptUserSpec;
@@ -42,48 +44,60 @@ import org.springframework.util.Assert;
  * @author Arjen Poutsma
  * @since 1.0.0
  */
-public class DefaultChatClientBuilder implements Builder {
+public final class DefaultChatClientBuilder implements Builder {
 
 	protected final DefaultChatClientRequestSpec defaultRequest;
 
 	private final ChatModel chatModel;
 
-	public DefaultChatClientBuilder(ChatModel chatModel) {
-		Assert.notNull(chatModel, "the " + ChatModel.class.getName() + " must be non-null");
-		this.chatModel = chatModel;
-		this.defaultRequest = new DefaultChatClientRequestSpec(chatModel, "", Map.of(), "", Map.of(), List.of(),
-				List.of(), List.of(), List.of(), null, List.of(), Map.of());
+	DefaultChatClientBuilder(ChatModel chatModel) {
+		this(chatModel, ObservationRegistry.NOOP);
 	}
 
+	DefaultChatClientBuilder(ChatModel chatModel, ObservationRegistry observationRegistry) {
+		Assert.notNull(chatModel, "the " + ChatModel.class.getName() + " must be non-null");
+		Assert.notNull(observationRegistry, "the " + ObservationRegistry.class.getName() + " must be non-null");
+		this.chatModel = chatModel;
+		this.defaultRequest = new DefaultChatClientRequestSpec(chatModel, "", Map.of(), "", Map.of(), List.of(),
+				List.of(), List.of(), List.of(), null, List.of(), Map.of(), observationRegistry);
+	}
+
+	@Override
 	public ChatClient build() {
 		return new DefaultChatClient(this.chatModel, this.defaultRequest);
 	}
 
+	@Override
 	public Builder defaultAdvisors(RequestResponseAdvisor... advisor) {
 		this.defaultRequest.advisors(advisor);
 		return this;
 	}
 
+	@Override
 	public Builder defaultAdvisors(Consumer<ChatClient.AdvisorSpec> advisorSpecConsumer) {
 		this.defaultRequest.advisors(advisorSpecConsumer);
 		return this;
 	}
 
+	@Override
 	public Builder defaultAdvisors(List<RequestResponseAdvisor> advisors) {
 		this.defaultRequest.advisors(advisors);
 		return this;
 	}
 
+	@Override
 	public Builder defaultOptions(ChatOptions chatOptions) {
 		this.defaultRequest.options(chatOptions);
 		return this;
 	}
 
+	@Override
 	public Builder defaultUser(String text) {
 		this.defaultRequest.user(text);
 		return this;
 	}
 
+	@Override
 	public Builder defaultUser(Resource text, Charset charset) {
 		try {
 			this.defaultRequest.user(text.getContentAsString(charset));
@@ -94,20 +108,24 @@ public class DefaultChatClientBuilder implements Builder {
 		return this;
 	}
 
+	@Override
 	public Builder defaultUser(Resource text) {
 		return this.defaultUser(text, Charset.defaultCharset());
 	}
 
+	@Override
 	public Builder defaultUser(Consumer<PromptUserSpec> userSpecConsumer) {
 		this.defaultRequest.user(userSpecConsumer);
 		return this;
 	}
 
+	@Override
 	public Builder defaultSystem(String text) {
 		this.defaultRequest.system(text);
 		return this;
 	}
 
+	@Override
 	public Builder defaultSystem(Resource text, Charset charset) {
 		try {
 			this.defaultRequest.system(text.getContentAsString(charset));
@@ -118,20 +136,24 @@ public class DefaultChatClientBuilder implements Builder {
 		return this;
 	}
 
+	@Override
 	public Builder defaultSystem(Resource text) {
 		return this.defaultSystem(text, Charset.defaultCharset());
 	}
 
+	@Override
 	public Builder defaultSystem(Consumer<PromptSystemSpec> systemSpecConsumer) {
 		this.defaultRequest.system(systemSpecConsumer);
 		return this;
 	}
 
+	@Override
 	public <I, O> Builder defaultFunction(String name, String description, java.util.function.Function<I, O> function) {
 		this.defaultRequest.function(name, description, function);
 		return this;
 	}
 
+	@Override
 	public Builder defaultFunctions(String... functionNames) {
 		this.defaultRequest.functions(functionNames);
 		return this;
