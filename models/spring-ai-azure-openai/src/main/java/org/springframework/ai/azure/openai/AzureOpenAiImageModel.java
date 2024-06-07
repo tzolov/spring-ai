@@ -36,7 +36,7 @@ import static java.lang.String.format;
  * @author Benoit Moussaud
  * @see ImageModel
  * @see com.azure.ai.openai.OpenAIClient
- * @since 1.0.0 M1
+ * @since 1.0.0
  */
 public class AzureOpenAiImageModel implements ImageModel {
 
