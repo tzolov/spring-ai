@@ -16,6 +16,8 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import reactor.core.publisher.Flux;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Media;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -49,6 +51,8 @@ import org.springframework.util.StringUtils;
  * @since 1.0.0
  */
 final class DefaultChatClient implements ChatClient {
+
+	private final static Logger logger = LoggerFactory.getLogger(DefaultChatClient.class);
 
 	private final ChatModel chatModel;
 
@@ -300,21 +304,28 @@ final class DefaultChatClient implements ChatClient {
 		private ChatResponse doGetObservableChatResponse(DefaultChatClientRequestSpec inputRequest,
 				String formatParam) {
 
-			Observation observation = Observation.createNotStarted("chatClient", inputRequest.observationRegistry);
+			Observation observation = Observation.createNotStarted("chatClient", inputRequest.observationRegistry)
+				.start();
 			try (Observation.Scope scope = observation.openScope()) {
 				return doGetChatResponseChatResponse(inputRequest, formatParam);
 			}
 			catch (Exception e) {
-				observation.error(e);
+				if (observation != null) {
+					observation.error(e);
+				}
 				throw new RuntimeException(e);
 			}
 			finally {
-				observation.stop();
+				if (observation != null) {
+					observation.stop();
+				}
 			}
 		}
 
 		private ChatResponse doGetChatResponseChatResponse(DefaultChatClientRequestSpec inputRequest,
 				String formatParam) {
+
+			logger.info("ChatClientRequestSpec: {}", inputRequest);
 
 			Map<String, Object> context = new ConcurrentHashMap<>();
 			context.putAll(inputRequest.getAdvisorParams());
@@ -398,7 +409,9 @@ final class DefaultChatClient implements ChatClient {
 
 		private Flux<ChatResponse> doGetObservableFluxChatResponse(DefaultChatClientRequestSpec inputRequest) {
 
-			Observation observation = Observation.createNotStarted("chatClient", inputRequest.observationRegistry);
+			Observation observation = Observation.createNotStarted("chatClient", inputRequest.observationRegistry)
+				.start();
+
 			try (Observation.Scope scope = observation.openScope()) {
 				return doGetFluxChatResponse(inputRequest);
 			}
