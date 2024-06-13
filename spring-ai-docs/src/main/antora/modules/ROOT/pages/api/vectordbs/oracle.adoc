@@ -109,7 +109,7 @@ You can use the following properties in your Spring Boot configuration to custom
 NOTE: If vectors are normalized, you can use `DOT` or `COSINE` for best performance.| COSINE
 |`spring.ai.vectorstore.oracle.forced-normalization`| Allows enabling vector normalization (if true) before insertion and for similarity search.
 
-CAUTION: Setting this to true is a requirement to allow for xref:../vectordbs.adoc#api-overview[search request similarity threshold].
+CAUTION: Setting this to true is a requirement to allow for xref:api/vectordbs.adoc#api-overview[search request similarity threshold].
 
 NOTE: If vectors are normalized, you can use `DOT` or `COSINE` for best performance. | false
 |`spring.ai.vectorstore.oracle.dimensions`| Embeddings dimension. If not specified explicitly the OracleVectorStore will allow the maximum: 65535. Dimensions are set to the embedding column on table creation. If you change the dimensions your would have to re-create the table as well. | 65535

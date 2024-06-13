@@ -67,7 +67,6 @@ import static org.springframework.jdbc.core.StatementCreatorUtils.setParameterVa
  * <li>Exact and Approximate similarity search</li>
  * <li>Filter expression as SQL/JSON Path expression evaluation</li>
  * </ul>
- * </p>
  *
  * @author Loïc Lefèvre
  */
@@ -85,7 +84,7 @@ public class OracleVectorStore implements VectorStore, InitializingBean {
 		NONE,
 
 		/**
-		 * </p>
+		 * <p>
 		 * The default type of index created for an In-Memory Neighbor Graph vector index
 		 * is Hierarchical Navigable Small World (HNSW).
 		 * </p>
@@ -101,7 +100,6 @@ public class OracleVectorStore implements VectorStore, InitializingBean {
 		 * <li>Within the maximum number of connections (NEIGHBORS) permitted per
 		 * vector</li>
 		 * </ul>
-		 * </p>
 		 *
 		 * @see <a href=
 		 * "https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/understand-hierarchical-navigable-small-world-indexes.html">Oracle

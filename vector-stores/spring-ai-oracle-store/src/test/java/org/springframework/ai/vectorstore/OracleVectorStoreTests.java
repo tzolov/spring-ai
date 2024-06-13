@@ -40,7 +40,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.ai.vectorstore.OracleVectorStore.DEFAULT_SEARCH_ACCURACY;
 
 @Testcontainers
-// @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+")
 public class OracleVectorStoreTests {
 
 	@Container

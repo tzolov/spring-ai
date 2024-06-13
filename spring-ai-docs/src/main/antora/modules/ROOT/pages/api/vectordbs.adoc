@@ -18,6 +18,7 @@ The following sections describe the Spring AI interface for using multiple vecto
 
 The last section is intended to demystify the underlying approach of similarity searching in vector databases.
 
+[[api-overview]]
 == API Overview
 This section serves as a guide to the `VectorStore` interface and its associated classes within the Spring AI framework.
 

@@ -1,16 +1,12 @@
 package org.springframework.ai.vectorstore;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionTextParser;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 public class ISOSQLJSONPathFilterExpressionConverterTest {
-
-	private static final Logger logger = LoggerFactory.getLogger(ISOSQLJSONPathFilterExpressionConverterTest.class);
 
 	@Test
 	public void testNIN() {
