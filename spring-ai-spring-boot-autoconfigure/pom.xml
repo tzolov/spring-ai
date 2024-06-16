@@ -296,6 +296,13 @@
 			<version>${project.parent.version}</version>
 			<optional>true</optional>
 		</dependency>
+		<!-- <dependency>
+			<groupId>co.elastic.clients</groupId>
+			<artifactId>elasticsearch-java</artifactId>
+			<version>${elasticsearch-java.version}</version>
+			<optional>true</optional>
+		</dependency> -->
+
 
 
 		<dependency>
@@ -317,13 +324,6 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-typesense-store</artifactId>
 			<version>${project.parent.version}</version>
-			<optional>true</optional>
-		</dependency>
-		
-		<dependency>
-			<groupId>co.elastic.clients</groupId>
-			<artifactId>elasticsearch-java</artifactId>
-			<version>${elasticsearch-java.version}</version>
 			<optional>true</optional>
 		</dependency>
 

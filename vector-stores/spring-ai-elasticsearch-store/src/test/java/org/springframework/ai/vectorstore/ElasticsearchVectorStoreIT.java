@@ -347,7 +347,7 @@ class ElasticsearchVectorStoreIT {
 			ElasticsearchVectorStoreOptions options = new ElasticsearchVectorStoreOptions();
 			options.setIndexName("index_l2");
 			options.setSimilarity(SimilarityFunction.l2_norm);
-			return new ElasticsearchVectorStore(options, restClient, embeddingModel,true);
+			return new ElasticsearchVectorStore(options, restClient, embeddingModel, true);
 		}
 
 		@Bean("vectorStore_dot_product")
@@ -355,7 +355,7 @@ class ElasticsearchVectorStoreIT {
 			ElasticsearchVectorStoreOptions options = new ElasticsearchVectorStoreOptions();
 			options.setIndexName("index_dot_product");
 			options.setSimilarity(SimilarityFunction.dot_product);
-			return new ElasticsearchVectorStore(options, restClient, embeddingModel,true);
+			return new ElasticsearchVectorStore(options, restClient, embeddingModel, true);
 		}
 
 		@Bean

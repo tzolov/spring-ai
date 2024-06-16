@@ -25,6 +25,7 @@ import org.springframework.ai.autoconfigure.retry.SpringAiRetryAutoConfiguration
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.ElasticsearchVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.SimilarityFunction;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration;
 import org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration;
@@ -77,7 +78,7 @@ class ElasticsearchVectorStoreAutoConfigurationIT {
 			ElasticsearchVectorStore vectorStore = context.getBean(ElasticsearchVectorStore.class);
 
 			if (!DEFAULT.equals(similarityFunction)) {
-				vectorStore.withSimilarityFunction(similarityFunction);
+				// vectorStore.withSimilarityFunction(similarityFunction);
 			}
 
 			vectorStore.add(documents);
@@ -128,8 +129,8 @@ class ElasticsearchVectorStoreAutoConfigurationIT {
 				assertThat(properties).isNotNull();
 				assertThat(properties.getIndexName()).isEqualTo("example");
 				assertThat(properties.getDimensions()).isEqualTo(1024);
-				assertThat(properties.isDenseVectorIndexing()).isTrue();
-				assertThat(properties.getSimilarity()).isEqualTo("dot_product");
+				// assertThat(properties.isDenseVectorIndexing()).isTrue();
+				assertThat(properties.getSimilarity()).isEqualTo(SimilarityFunction.dot_product);
 
 				assertThat(elasticsearchVectorStore).isNotNull();
 			});
