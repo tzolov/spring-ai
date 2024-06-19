@@ -34,8 +34,8 @@ import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.embedding.EmbeddingResponseMetadata;
-import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 public class AzureOpenAiEmbeddingModel extends AbstractEmbeddingModel {
 
@@ -97,9 +97,33 @@ public class AzureOpenAiEmbeddingModel extends AbstractEmbeddingModel {
 			azureOptions.setUser(this.defaultOptions.getUser());
 		}
 		if (embeddingRequest.getOptions() != null && !EmbeddingOptions.EMPTY.equals(embeddingRequest.getOptions())) {
-			azureOptions = ModelOptionsUtils.merge(embeddingRequest.getOptions(), azureOptions,
-					EmbeddingsOptions.class);
+			azureOptions = merge((AzureOpenAiEmbeddingOptions) embeddingRequest.getOptions(), azureOptions);
 		}
+		return azureOptions;
+	}
+
+	private EmbeddingsOptions merge(AzureOpenAiEmbeddingOptions springAiOptions, EmbeddingsOptions azureOptions) {
+
+		if (springAiOptions == null) {
+			return azureOptions;
+		}
+
+		if (StringUtils.hasText(springAiOptions.getDeploymentName())) {
+			azureOptions.setModel(springAiOptions.getDeploymentName());
+		}
+
+		if (StringUtils.hasText(springAiOptions.getUser())) {
+			azureOptions.setUser(springAiOptions.getUser());
+		}
+
+		if (StringUtils.hasText(springAiOptions.getInputType())) {
+			azureOptions.setInputType(springAiOptions.getInputType());
+		}
+
+		if (springAiOptions.getDimensions() != null) {
+			azureOptions.setDimensions(springAiOptions.getDimensions());
+		}
+
 		return azureOptions;
 	}
 

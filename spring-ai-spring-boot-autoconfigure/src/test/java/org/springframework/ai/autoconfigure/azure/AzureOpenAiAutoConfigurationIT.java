@@ -47,9 +47,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "AZURE_OPENAI_ENDPOINT", matches = ".+")
 public class AzureOpenAiAutoConfigurationIT {
 
-	private static String CHAT_MODEL_NAME = "gpt-4o";
+	private static final String CHAT_MODEL_NAME = "gpt-4o";
 
-	private static String EMBEDDING_MODEL_NAME = "text-embedding-ada-002";
+	private static final String EMBEDDING_MODEL_NAME = "text-embedding-ada-002";
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner().withPropertyValues(
 	// @formatter:off
@@ -58,7 +58,7 @@ public class AzureOpenAiAutoConfigurationIT {
 
 			"spring.ai.azure.openai.chat.options.deployment-name=" + CHAT_MODEL_NAME,
 			"spring.ai.azure.openai.chat.options.temperature=0.8",
-			"spring.ai.azure.openai.chat.options.maxTokens=123",
+			"spring.ai.azure.openai.chat.options.maxTokens=200",
 
 			"spring.ai.azure.openai.embedding.options.deployment-name=" + EMBEDDING_MODEL_NAME
 			// @formatter:on

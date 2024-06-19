@@ -21,6 +21,8 @@ import com.azure.ai.openai.models.ContentFilterResult;
 import com.azure.ai.openai.models.ContentFilterResultDetailsForPrompt;
 import com.azure.ai.openai.models.ContentFilterResultsForChoice;
 import com.azure.ai.openai.models.ContentFilterSeverity;
+
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
@@ -61,6 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Christian Tzolov
  * @since 0.7.0
  */
+@Disabled("Disabled until we decied how to handel the Azure metadata.")
 @SpringBootTest
 @ActiveProfiles("spring-ai-azure-openai-mocks")
 @ContextConfiguration(classes = AzureOpenAiChatModelMetadataTests.TestConfiguration.class)

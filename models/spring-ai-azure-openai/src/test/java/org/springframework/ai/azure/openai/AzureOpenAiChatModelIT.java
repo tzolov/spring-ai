@@ -91,7 +91,8 @@ class AzureOpenAiChatModelIT {
 		PromptTemplate promptTemplate = new PromptTemplate(template,
 				Map.of("subject", "ice cream flavors", "format", format));
 		Prompt prompt = new Prompt(promptTemplate.createMessage());
-		Generation generation = chatModel.call(prompt).getResult();
+		var response = chatModel.call(prompt);
+		Generation generation = response.getResult();
 
 		List<String> list = outputConverter.convert(generation.getOutput().getContent());
 		assertThat(list).hasSize(5);
@@ -223,7 +224,7 @@ class AzureOpenAiChatModelIT {
 		@Bean
 		public AzureOpenAiChatModel azureOpenAiChatModel(OpenAIClient openAIClient) {
 			return new AzureOpenAiChatModel(openAIClient,
-					AzureOpenAiChatOptions.builder().withDeploymentName("gpt-35-turbo").withMaxTokens(200).build());
+					AzureOpenAiChatOptions.builder().withDeploymentName("gpt-4o").withMaxTokens(200).build());
 
 		}
 

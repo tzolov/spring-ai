@@ -43,6 +43,19 @@ public class AzureOpenAiEmbeddingOptions implements EmbeddingOptions {
 	@JsonProperty(value = "model")
 	private String deploymentName;
 
+	/**
+	 * When using Azure OpenAI, specifies the input type to use for embedding search.
+	 */
+	@JsonProperty(value = "inputType")
+	private String inputType;
+
+	/**
+	 * The number of dimensions the resulting output embeddings should have. Only
+	 * supported in `text-embedding-3` and later models.
+	 */
+	@JsonProperty(value = "dimensions")
+	private Integer dimensions;
+
 	public static Builder builder() {
 		return new Builder();
 	}
@@ -58,6 +71,16 @@ public class AzureOpenAiEmbeddingOptions implements EmbeddingOptions {
 
 		public Builder withDeploymentName(String model) {
 			this.options.setDeploymentName(model);
+			return this;
+		}
+
+		public Builder withInputType(String inputType) {
+			this.options.setInputType(inputType);
+			return this;
+		}
+
+		public Builder withDimensions(Integer dimensions) {
+			this.options.setDimensions(dimensions);
 			return this;
 		}
 
@@ -81,6 +104,22 @@ public class AzureOpenAiEmbeddingOptions implements EmbeddingOptions {
 
 	public void setDeploymentName(String deploymentName) {
 		this.deploymentName = deploymentName;
+	}
+
+	public String getInputType() {
+		return inputType;
+	}
+
+	public void setInputType(String inputType) {
+		this.inputType = inputType;
+	}
+
+	public Integer getDimensions() {
+		return dimensions;
+	}
+
+	public void setDimensions(Integer dimensions) {
+		this.dimensions = dimensions;
 	}
 
 }
