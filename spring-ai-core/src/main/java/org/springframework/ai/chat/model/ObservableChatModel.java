@@ -61,7 +61,20 @@ public class ObservableChatModel implements ChatModel {
 
 	@Override
 	public Flux<ChatResponse> stream(Prompt prompt) {
-		return this.chatModel.stream(prompt);
+
+		Observation observation = Observation.createNotStarted("streamChatModel", this.observationRegistry).start();
+
+		return this.chatModel.stream(prompt).doOnSubscribe(subscription -> {
+		}).doOnNext(chatResponse -> {
+		}).doOnComplete(() -> {
+			if (observation != null) {
+				observation.stop();
+			}
+		}).doOnError(e -> {
+			if (observation != null) {
+				observation.error(e);
+			}
+		});
 	}
 
 	@Override
