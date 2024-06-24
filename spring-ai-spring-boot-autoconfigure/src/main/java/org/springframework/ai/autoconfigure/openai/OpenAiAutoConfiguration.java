@@ -18,6 +18,8 @@ package org.springframework.ai.autoconfigure.openai;
 import java.util.List;
 
 import org.springframework.ai.autoconfigure.retry.SpringAiRetryAutoConfiguration;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ObservableChatModel;
 import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.openai.OpenAiAudioSpeechModel;
@@ -46,6 +48,8 @@ import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import io.micrometer.observation.ObservationRegistry;
+
 /**
  * @author Christian Tzolov
  * @author Stefan Vassilev
@@ -64,11 +68,11 @@ public class OpenAiAutoConfiguration {
 	@ConditionalOnMissingBean
 	@ConditionalOnProperty(prefix = OpenAiChatProperties.CONFIG_PREFIX, name = "enabled", havingValue = "true",
 			matchIfMissing = true)
-	public OpenAiChatModel openAiChatModel(OpenAiConnectionProperties commonProperties,
-			OpenAiChatProperties chatProperties, RestClient.Builder restClientBuilder,
-			WebClient.Builder webClientBuilder, List<FunctionCallback> toolFunctionCallbacks,
-			FunctionCallbackContext functionCallbackContext, RetryTemplate retryTemplate,
-			ResponseErrorHandler responseErrorHandler) {
+	public ChatModel openAiChatModel(OpenAiConnectionProperties commonProperties, OpenAiChatProperties chatProperties,
+			RestClient.Builder restClientBuilder, WebClient.Builder webClientBuilder,
+			List<FunctionCallback> toolFunctionCallbacks, FunctionCallbackContext functionCallbackContext,
+			RetryTemplate retryTemplate, ResponseErrorHandler responseErrorHandler,
+			ObservationRegistry observationRegistry) {
 
 		var openAiApi = openAiApi(chatProperties.getBaseUrl(), commonProperties.getBaseUrl(),
 				chatProperties.getApiKey(), commonProperties.getApiKey(), restClientBuilder, webClientBuilder,
@@ -78,7 +82,14 @@ public class OpenAiAutoConfiguration {
 			chatProperties.getOptions().getFunctionCallbacks().addAll(toolFunctionCallbacks);
 		}
 
-		return new OpenAiChatModel(openAiApi, chatProperties.getOptions(), functionCallbackContext, retryTemplate);
+		OpenAiChatModel openAiChatModel = new OpenAiChatModel(openAiApi, chatProperties.getOptions(),
+				functionCallbackContext, retryTemplate);
+
+		if (!observationRegistry.isNoop()) {
+			return new ObservableChatModel(openAiChatModel, observationRegistry);
+		}
+
+		return openAiChatModel;
 	}
 
 	@Bean
@@ -193,6 +204,12 @@ public class OpenAiAutoConfiguration {
 		FunctionCallbackContext manager = new FunctionCallbackContext();
 		manager.setApplicationContext(context);
 		return manager;
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	ObservationRegistry observationRegistry() {
+		return ObservationRegistry.NOOP;
 	}
 
 }
