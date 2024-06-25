@@ -28,4 +28,8 @@ public interface ChatOptions extends ModelOptions {
 
 	Integer getTopK();
 
+	default String getModel() {
+		return "";
+	}
+
 }

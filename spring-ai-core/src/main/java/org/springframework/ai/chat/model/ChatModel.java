@@ -44,6 +44,7 @@ public interface ChatModel extends Model<Prompt, ChatResponse>, StreamingChatMod
 
 	ChatOptions getDefaultOptions();
 
+	@Override
 	default Flux<ChatResponse> stream(Prompt prompt) {
 		throw new UnsupportedOperationException("streaming is not supported");
 	}
