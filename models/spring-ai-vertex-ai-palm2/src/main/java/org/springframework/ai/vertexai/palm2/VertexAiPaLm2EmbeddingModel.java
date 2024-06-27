@@ -42,7 +42,7 @@ public class VertexAiPaLm2EmbeddingModel extends AbstractEmbeddingModel {
 	}
 
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 		List<VertexAiPaLm2Api.Embedding> vertexEmbeddings = this.vertexAiApi.batchEmbedText(request.getInstructions());
 		AtomicInteger indexCounter = new AtomicInteger(0);
 		List<Embedding> embeddings = vertexEmbeddings.stream()

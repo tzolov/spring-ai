@@ -13,7 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-package org.springframework.ai.chat.model.observation;
+package org.springframework.ai.embedding.observation;
 
 import io.micrometer.common.docs.KeyName;
 import io.micrometer.observation.Observation;
@@ -24,20 +24,25 @@ import io.micrometer.observation.docs.ObservationDocumentation;
  * @author Christian Tzolov
  * @since 1.0.0
  */
-public enum ChatModelObservationDocumentation implements ObservationDocumentation {
+public enum EmbeddingModelObservationDocumentation implements ObservationDocumentation {
 
 	/**
 	 * AI Chat Model observations for clients.
 	 */
-	AI_CHAT_MODEL {
+	AI_EMBEDDING_MODEL {
 		@Override
 		public Class<? extends ObservationConvention<? extends Observation.Context>> getDefaultConvention() {
-			return DefaultChatModelObservationConvention.class;
+			return DefaultEmbeddingModelObservationConvention.class;
 		}
 
 		@Override
 		public KeyName[] getLowCardinalityKeyNames() {
 			return LowCardinalityKeyNames.values();
+		}
+
+		@Override
+		public KeyName[] getHighCardinalityKeyNames() {
+			return new KeyName[] {};
 		}
 
 	};
@@ -57,34 +62,13 @@ public enum ChatModelObservationDocumentation implements ObservationDocumentatio
 		},
 
 		/**
-		 * ChatModel request message type, or {@value KeyValue#NONE_VALUE} if no response
+		 * Dimensions used for EmbeddingModel request, or {@value KeyValue#NONE_VALUE} if
+		 * none was provided.
 		 */
-		REQUEST_MESSAGE_TYPE {
+		DIMENSIONS {
 			@Override
 			public String asString() {
-				return "request.message.type";
-			}
-
-		},
-
-		/**
-		 * ChatModel response message type, or {@value KeyValue#NONE_VALUE} if no response
-		 */
-		RESPONSE_MESSAGE_TYPE {
-			@Override
-			public String asString() {
-				return "response.message.type";
-			}
-		},
-
-		/**
-		 * URI template used for ChatModel request, or {@value KeyValue#NONE_VALUE} if
-		 * none was provided. Only the path part of the URI is considered.
-		 */
-		URI {
-			@Override
-			public String asString() {
-				return "uri";
+				return "dimensions";
 			}
 		},
 
@@ -119,6 +103,18 @@ public enum ChatModelObservationDocumentation implements ObservationDocumentatio
 				return "exception";
 			}
 		},
+
+	}
+
+	public enum HighCardinalityKeyNames implements KeyName {
+
+		;
+
+		@Override
+		public String asString() {
+			// TODO Auto-generated method stub
+			throw new UnsupportedOperationException("Unimplemented method 'asString'");
+		}
 
 	}
 

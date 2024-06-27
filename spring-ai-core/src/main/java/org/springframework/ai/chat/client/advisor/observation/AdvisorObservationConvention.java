@@ -13,7 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-package org.springframework.ai.chat.model.observation;
+package org.springframework.ai.chat.client.advisor.observation;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationConvention;
@@ -23,11 +23,11 @@ import io.micrometer.observation.ObservationConvention;
  * @since 1.0.0
  */
 
-public interface ChatModelObservationConvention extends ObservationConvention<ChatModelObservationContext> {
+public interface AdvisorObservationConvention extends ObservationConvention<AdvisorObservationContext> {
 
 	@Override
 	default boolean supportsContext(Observation.Context context) {
-		return context instanceof ChatModelObservationContext;
+		return context instanceof AdvisorObservationContext;
 	}
 
 }

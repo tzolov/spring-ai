@@ -79,7 +79,7 @@ public class MistralAiEmbeddingModel extends AbstractEmbeddingModel {
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 		return this.retryTemplate.execute(ctx -> {
 
 			var apiRequest = (this.defaultOptions != null)

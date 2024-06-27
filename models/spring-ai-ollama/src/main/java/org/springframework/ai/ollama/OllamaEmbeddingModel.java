@@ -95,7 +95,7 @@ public class OllamaEmbeddingModel extends AbstractEmbeddingModel {
 	}
 
 	@Override
-	public EmbeddingResponse call(org.springframework.ai.embedding.EmbeddingRequest request) {
+	public EmbeddingResponse doCall(org.springframework.ai.embedding.EmbeddingRequest request) {
 		Assert.notEmpty(request.getInstructions(), "At least one text is required!");
 		if (request.getInstructions().size() != 1) {
 			logger.warn(

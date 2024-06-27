@@ -353,7 +353,8 @@ public class OpenAiApi {
 			@JsonProperty("top_p") Float topP,
 			@JsonProperty("tools") List<FunctionTool> tools,
 			@JsonProperty("tool_choice") Object toolChoice,
-			@JsonProperty("user") String user) {
+			@JsonProperty("user") String user,
+			@JsonProperty("parallel_tool_calls") Boolean parallelToolCalls) {
 
 		/**
 		 * Shortcut constructor for a chat completion request with the given messages, model and temperature.
@@ -365,7 +366,7 @@ public class OpenAiApi {
 		public ChatCompletionRequest(List<ChatCompletionMessage> messages, String model, Float temperature) {
 			this(messages, model, null, null, null, null, null, null, null,
 					null, null, null, false, null, temperature, null,
-					null, null, null);
+					null, null, null, null);
 		}
 
 		/**
@@ -380,7 +381,7 @@ public class OpenAiApi {
 		public ChatCompletionRequest(List<ChatCompletionMessage> messages, String model, Float temperature, boolean stream) {
 			this(messages, model, null, null, null, null, null, null, null,
 					null, null, null, stream, null, temperature, null,
-					null, null, null);
+					null, null, null, null);
 		}
 
 		/**
@@ -396,7 +397,7 @@ public class OpenAiApi {
 				List<FunctionTool> tools, Object toolChoice) {
 			this(messages, model, null, null, null, null, null, null, null,
 					null, null, null, false, null, 0.8f, null,
-					tools, toolChoice, null);
+					tools, toolChoice, null, null);
 		}
 
 		/**
@@ -409,7 +410,7 @@ public class OpenAiApi {
 		public ChatCompletionRequest(List<ChatCompletionMessage> messages, Boolean stream) {
 			this(messages, null, null, null, null, null, null, null, null,
 					null, null, null, stream, null, null, null,
-					null, null, null);
+					null, null, null, null);
 		}
 
 		/**
@@ -421,7 +422,7 @@ public class OpenAiApi {
 		public ChatCompletionRequest withStreamOptions(StreamOptions streamOptions) {
 			return new ChatCompletionRequest(messages, model, frequencyPenalty, logitBias, logprobs, topLogprobs, maxTokens, n, presencePenalty,
 					responseFormat, seed, stop, stream, streamOptions, temperature, topP,
-					tools, toolChoice, user);
+					tools, toolChoice, user, parallelToolCalls);
 		}
 
 		/**

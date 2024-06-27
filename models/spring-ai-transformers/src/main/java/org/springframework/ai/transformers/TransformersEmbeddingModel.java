@@ -237,7 +237,7 @@ public class TransformersEmbeddingModel extends AbstractEmbeddingModel implement
 	}
 
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 
 		List<List<Double>> resultEmbeddings = new ArrayList<>();
 

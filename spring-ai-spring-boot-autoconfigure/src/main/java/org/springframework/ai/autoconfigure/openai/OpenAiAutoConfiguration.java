@@ -19,7 +19,8 @@ import java.util.List;
 
 import org.springframework.ai.autoconfigure.retry.SpringAiRetryAutoConfiguration;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ObservableChatModel;
+import org.springframework.ai.chat.model.observation.ObservableChatModel;
+import org.springframework.ai.chat.model.observation.UsageObservationHandler;
 import org.springframework.ai.model.function.FunctionCallback;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.openai.OpenAiAudioSpeechModel;
@@ -40,7 +41,7 @@ import org.springframework.boot.autoconfigure.web.reactive.function.client.WebCl
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
@@ -49,6 +50,7 @@ import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 
 /**
@@ -99,15 +101,15 @@ public class OpenAiAutoConfiguration {
 			matchIfMissing = true)
 	public OpenAiEmbeddingModel openAiEmbeddingModel(OpenAiConnectionProperties commonProperties,
 			OpenAiEmbeddingProperties embeddingProperties, RestClient.Builder restClientBuilder,
-			WebClient.Builder webClientBuilder, RetryTemplate retryTemplate,
-			ResponseErrorHandler responseErrorHandler) {
+			WebClient.Builder webClientBuilder, RetryTemplate retryTemplate, ResponseErrorHandler responseErrorHandler,
+			ObservationRegistry observationRegistry) {
 
 		var openAiApi = openAiApi(embeddingProperties.getBaseUrl(), commonProperties.getBaseUrl(),
 				embeddingProperties.getApiKey(), commonProperties.getApiKey(), restClientBuilder, webClientBuilder,
 				responseErrorHandler);
 
 		return new OpenAiEmbeddingModel(openAiApi, embeddingProperties.getMetadataMode(),
-				embeddingProperties.getOptions(), retryTemplate);
+				embeddingProperties.getOptions(), retryTemplate, observationRegistry, null);
 	}
 
 	private OpenAiApi openAiApi(String baseUrl, String commonBaseUrl, String apiKey, String commonApiKey,
@@ -207,10 +209,21 @@ public class OpenAiAutoConfiguration {
 		return manager;
 	}
 
-	@Bean
-	@ConditionalOnMissingBean
-	ObservationRegistry observationRegistry() {
-		return ObservationRegistry.NOOP;
+	// @Bean
+	// @ConditionalOnMissingBean
+	// ObservationRegistry observationRegistry() {
+	// return ObservationRegistry.NOOP;
+	// }
+
+	@ConditionalOnClass(MeterRegistry.class)
+	@Configuration
+	static class MicrometerConfiguration {
+
+		@Bean
+		public UsageObservationHandler usageObservationHandler(MeterRegistry meterRegistry) {
+			return new UsageObservationHandler(meterRegistry);
+		}
+
 	}
 
 }

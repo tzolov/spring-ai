@@ -169,7 +169,7 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 
 	@SuppressWarnings("null")
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 
 		final PostgresMlEmbeddingOptions optionsToUse = this.mergeOptions(request.getOptions());
 
