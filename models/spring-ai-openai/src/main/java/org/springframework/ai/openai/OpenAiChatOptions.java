@@ -164,6 +164,8 @@ public class OpenAiChatOptions implements FunctionCallingOptions, ChatOptions {
 	@NestedConfigurationProperty
 	@JsonIgnore
 	private Set<String> functions = new HashSet<>();
+
+	private @JsonProperty("parallel_tool_calls") Boolean parallelToolCalls;
 	// @formatter:on
 
 	public static Builder builder() {
@@ -288,6 +290,11 @@ public class OpenAiChatOptions implements FunctionCallingOptions, ChatOptions {
 		public Builder withFunction(String functionName) {
 			Assert.hasText(functionName, "Function name must not be empty");
 			this.options.functions.add(functionName);
+			return this;
+		}
+
+		public Builder withParallelToolCalls(Boolean parallelToolCalls) {
+			this.options.parallelToolCalls = parallelToolCalls;
 			return this;
 		}
 
@@ -460,6 +467,14 @@ public class OpenAiChatOptions implements FunctionCallingOptions, ChatOptions {
 
 	public void setFunctions(Set<String> functionNames) {
 		this.functions = functionNames;
+	}
+
+	public Boolean getParallelToolCalls() {
+		return this.parallelToolCalls;
+	}
+
+	public void setParallelToolCalls(Boolean parallelToolCalls) {
+		this.parallelToolCalls = parallelToolCalls;
 	}
 
 	@Override

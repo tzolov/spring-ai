@@ -12,12 +12,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
-import reactor.core.publisher.Flux;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.advisor.observation.AdvisorObservationContext;
+import org.springframework.ai.chat.client.advisor.observation.AdvisorObservationDocumentation;
+import org.springframework.ai.chat.client.advisor.observation.DefaultAdvisorObservationConvention;
+import org.springframework.ai.chat.client.observation.ChatClientObservationContext;
+import org.springframework.ai.chat.client.observation.ChatClientObservationConvention;
+import org.springframework.ai.chat.client.observation.ChatClientObservationDocumentation;
+import org.springframework.ai.chat.client.observation.DefaultChatClientObservationConvention;
 import org.springframework.ai.chat.messages.Media;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -25,6 +28,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.StreamingChatModel;
+import org.springframework.ai.chat.model.observation.ChatModelObservationContext;
+import org.springframework.ai.chat.model.observation.ChatModelObservationDocumentation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -39,6 +44,11 @@ import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.MimeType;
 import org.springframework.util.StringUtils;
+
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.Observation.Scope;
+import io.micrometer.observation.ObservationRegistry;
+import reactor.core.publisher.Flux;
 
 /**
  * The default implementation of {@link ChatClient} as created by the
@@ -304,22 +314,15 @@ final class DefaultChatClient implements ChatClient {
 		private ChatResponse doGetObservableChatResponse(DefaultChatClientRequestSpec inputRequest,
 				String formatParam) {
 
-			Observation observation = Observation.createNotStarted("chatClient", inputRequest.observationRegistry)
-				.start();
-			try (Observation.Scope scope = observation.openScope()) {
-				return doGetChatResponseChatResponse(inputRequest, formatParam);
-			}
-			catch (Exception e) {
-				if (observation != null) {
-					observation.error(e);
-				}
-				throw new RuntimeException(e);
-			}
-			finally {
-				if (observation != null) {
-					observation.stop();
-				}
-			}
+			ChatClientObservationContext observationContext = new ChatClientObservationContext();
+			observationContext.setModelClassName("ChatClient");
+			observationContext.setStream(false);
+
+			return ChatClientObservationDocumentation.AI_CHAT_CLIENT
+				.observation(null, DEFAULT_CHAT_CLIENT_OBSERVATION_CONVENTION, () -> observationContext,
+						inputRequest.observationRegistry)
+				.observe(() -> doGetChatResponseChatResponse(inputRequest, formatParam));
+
 		}
 
 		private ChatResponse doGetChatResponseChatResponse(DefaultChatClientRequestSpec inputRequest,
@@ -379,7 +382,21 @@ final class DefaultChatClient implements ChatClient {
 			if (!CollectionUtils.isEmpty(inputRequest.getAdvisors())) {
 				var currentAdvisors = new ArrayList<>(inputRequest.getAdvisors());
 				for (RequestResponseAdvisor advisor : currentAdvisors) {
-					advisedResponse = advisor.adviseResponse(advisedResponse, context);
+
+					var observationContext = new AdvisorObservationContext();
+					observationContext.setModelClassName(advisor.getClass().getSimpleName());
+					observationContext.setType(AdvisorObservationContext.Type.AFTER);
+					observationContext
+						.setName(observationContext.getName() + AdvisorObservationContext.Type.AFTER.suffics);
+
+					final var adviser2 = advisor;
+					final var advisedResponse2 = advisedResponse;
+					advisedResponse = AdvisorObservationDocumentation.AI_ADVISOR
+						.observation(null, new DefaultAdvisorObservationConvention(), () -> observationContext,
+								inputRequest.observationRegistry)
+						.observe(() -> adviser2.adviseResponse(advisedResponse2, context));
+
+					// advisedResponse = advisor.adviseResponse(advisedResponse, context);
 				}
 			}
 
@@ -409,19 +426,34 @@ final class DefaultChatClient implements ChatClient {
 
 		private Flux<ChatResponse> doGetObservableFluxChatResponse(DefaultChatClientRequestSpec inputRequest) {
 
-			Observation observation = Observation.createNotStarted("chatClient", inputRequest.observationRegistry)
-				.start();
+			return Flux.defer(() -> {
+				ChatClientObservationContext observationContext = new ChatClientObservationContext();
+				observationContext.setModelClassName("ChatClient");
+				observationContext.setStream(true);
+				observationContext.setModel(inputRequest.getChatOptions().getModel());
 
-			try (Observation.Scope scope = observation.openScope()) {
-				return doGetFluxChatResponse(inputRequest);
-			}
-			catch (Exception e) {
-				observation.error(e);
-				throw new RuntimeException(e);
-			}
-			finally {
-				observation.stop();
-			}
+				Observation observation = ChatClientObservationDocumentation.AI_CHAT_CLIENT
+					.observation(null, DEFAULT_CHAT_CLIENT_OBSERVATION_CONVENTION, () -> observationContext,
+							inputRequest.observationRegistry)
+					.start();
+
+				try (Scope scope = observation.openScope()) {
+					return doGetFluxChatResponse(inputRequest).doOnSubscribe(subscription -> {
+
+					}).doOnNext(chatResponse -> {
+						observationContext.setChatResponse(chatResponse);
+					}).doOnComplete(() -> {
+
+						if (observation != null) {
+							observation.stop();
+						}
+					}).doOnError(e -> {
+						if (observation != null) {
+							observation.error(e);
+						}
+					});
+				}
+			});
 		}
 
 		private Flux<ChatResponse> doGetFluxChatResponse(DefaultChatClientRequestSpec inputRequest) {
@@ -497,6 +529,8 @@ final class DefaultChatClient implements ChatClient {
 		}
 
 	}
+
+	private static final ChatClientObservationConvention DEFAULT_CHAT_CLIENT_OBSERVATION_CONVENTION = new DefaultChatClientObservationConvention();
 
 	static class DefaultChatClientRequestSpec implements ChatClientRequestSpec {
 
@@ -782,7 +816,19 @@ final class DefaultChatClient implements ChatClient {
 				// apply the advisors onRequest
 				var currentAdvisors = new ArrayList<>(inputRequest.advisors);
 				for (RequestResponseAdvisor advisor : currentAdvisors) {
-					adviseRequest = advisor.adviseRequest(adviseRequest, context);
+					var observationContext = new AdvisorObservationContext();
+					observationContext.setModelClassName(advisor.getClass().getSimpleName());
+					observationContext.setType(AdvisorObservationContext.Type.BEFORE);
+					observationContext
+						.setName(observationContext.getName() + AdvisorObservationContext.Type.BEFORE.suffics);
+
+					final var adviseRequest2 = adviseRequest;
+					adviseRequest = AdvisorObservationDocumentation.AI_ADVISOR
+						.observation(null, new DefaultAdvisorObservationConvention(), () -> observationContext,
+								inputRequest.observationRegistry)
+						.observe(() -> advisor.adviseRequest(adviseRequest2, context));
+
+					// adviseRequest = advisor.adviseRequest(adviseRequest, context);
 				}
 
 				advisedRequest = new DefaultChatClientRequestSpec(adviseRequest.chatModel(), adviseRequest.userText(),

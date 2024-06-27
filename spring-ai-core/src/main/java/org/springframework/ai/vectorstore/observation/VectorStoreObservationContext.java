@@ -13,21 +13,35 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-package org.springframework.ai.chat.model.observation;
+package org.springframework.ai.vectorstore.observation;
 
 import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationConvention;
 
 /**
  * @author Christian Tzolov
  * @since 1.0.0
  */
 
-public interface ChatModelObservationConvention extends ObservationConvention<ChatModelObservationContext> {
+public class VectorStoreObservationContext extends Observation.Context {
 
-	@Override
-	default boolean supportsContext(Observation.Context context) {
-		return context instanceof ChatModelObservationContext;
+	private String modelClassName;
+
+	private int dimenssions;
+
+	public void setModelClassName(String chatModelName) {
+		this.modelClassName = chatModelName;
+	}
+
+	public String getModelClassName() {
+		return this.modelClassName;
+	}
+
+	public void setDimenssions(int dimenssions) {
+		this.dimenssions = dimenssions;
+	}
+
+	public int getDimenssions() {
+		return this.dimenssions;
 	}
 
 }

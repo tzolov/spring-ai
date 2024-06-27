@@ -80,7 +80,7 @@ public class BedrockTitanEmbeddingModel extends AbstractEmbeddingModel {
 	}
 
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 		Assert.notEmpty(request.getInstructions(), "At least one text is required!");
 		if (request.getInstructions().size() != 1) {
 			logger.warn(

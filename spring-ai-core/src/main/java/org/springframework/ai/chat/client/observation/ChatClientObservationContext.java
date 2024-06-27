@@ -13,10 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-package org.springframework.ai.chat.model.observation;
+package org.springframework.ai.chat.client.observation;
 
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
 
 import io.micrometer.observation.Observation;
 
@@ -25,20 +24,22 @@ import io.micrometer.observation.Observation;
  * @since 1.0.0
  */
 
-public class ChatModelObservationContext extends Observation.Context {
+public class ChatClientObservationContext extends Observation.Context {
 
-	private Prompt prompt;
+	private String modelClassName;
 
 	private ChatResponse chatResponse;
 
-	private String chatModelName;
+	private boolean stream;
 
-	public Prompt getPrompt() {
-		return this.prompt;
+	private String model;
+
+	public void setModelClassName(String chatModelName) {
+		this.modelClassName = chatModelName;
 	}
 
-	public void setPrompt(Prompt prompt) {
-		this.prompt = prompt;
+	public String getModelClassName() {
+		return this.modelClassName;
 	}
 
 	public ChatResponse getChatResponse() {
@@ -49,12 +50,20 @@ public class ChatModelObservationContext extends Observation.Context {
 		this.chatResponse = chatResponse;
 	}
 
-	public void setChatModelName(String chatModelName) {
-		this.chatModelName = chatModelName;
+	public boolean isStream() {
+		return this.stream;
 	}
 
-	public String getChatModelName() {
-		return this.chatModelName;
+	public void setStream(boolean stream) {
+		this.stream = stream;
+	}
+
+	public void setModel(String model) {
+		this.model = model;
+	}
+
+	public String getModel() {
+		return this.model;
 	}
 
 }

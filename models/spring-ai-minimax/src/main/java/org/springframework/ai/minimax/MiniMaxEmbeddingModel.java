@@ -110,7 +110,7 @@ public class MiniMaxEmbeddingModel extends AbstractEmbeddingModel {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 
 		return this.retryTemplate.execute(ctx -> {
 

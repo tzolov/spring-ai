@@ -27,6 +27,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import io.micrometer.observation.ObservationRegistry;
+
 /**
  * @author Christian Tzolov
  * @author Josh Long
@@ -39,7 +41,7 @@ public class PgVectorStoreAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public PgVectorStore vectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel,
-			PgVectorStoreProperties properties) {
+			PgVectorStoreProperties properties, ObservationRegistry observationRegistry) {
 		var initializeSchema = properties.isInitializeSchema();
 
 		return new PgVectorStore.Builder(jdbcTemplate, embeddingModel).withSchemaName(properties.getSchemaName())
@@ -50,6 +52,7 @@ public class PgVectorStoreAutoConfiguration {
 			.withRemoveExistingVectorStoreTable(properties.isRemoveExistingVectorStoreTable())
 			.withIndexType(properties.getIndexType())
 			.withInitializeSchema(initializeSchema)
+			.withObservationRegistry(observationRegistry)
 			.build();
 	}
 

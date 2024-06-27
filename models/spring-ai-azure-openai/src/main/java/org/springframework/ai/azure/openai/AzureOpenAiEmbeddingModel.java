@@ -77,7 +77,7 @@ public class AzureOpenAiEmbeddingModel extends AbstractEmbeddingModel {
 	}
 
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest embeddingRequest) {
+	public EmbeddingResponse doCall(EmbeddingRequest embeddingRequest) {
 		logger.debug("Retrieving embeddings");
 
 		EmbeddingsOptions azureOptions = toEmbeddingOptions(embeddingRequest);

@@ -110,7 +110,7 @@ public class ZhiPuAiEmbeddingModel extends AbstractEmbeddingModel {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 
 		return this.retryTemplate.execute(ctx -> {
 			Assert.notEmpty(request.getInstructions(), "At least one text is required!");

@@ -13,21 +13,47 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-package org.springframework.ai.chat.model.observation;
+package org.springframework.ai.chat.client.advisor.observation;
 
 import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationConvention;
 
 /**
  * @author Christian Tzolov
  * @since 1.0.0
  */
 
-public interface ChatModelObservationConvention extends ObservationConvention<ChatModelObservationContext> {
+public class AdvisorObservationContext extends Observation.Context {
 
-	@Override
-	default boolean supportsContext(Observation.Context context) {
-		return context instanceof ChatModelObservationContext;
+	public enum Type {
+
+		BEFORE(".before"), AFTER(".after"), AROUND(".around");
+
+		public final String suffics;
+
+		Type(String string) {
+			this.suffics = string;
+		}
+
+	};
+
+	private String modelClassName;
+
+	private Type type;
+
+	public void setModelClassName(String chatModelName) {
+		this.modelClassName = chatModelName;
+	}
+
+	public String getModelClassName() {
+		return this.modelClassName;
+	}
+
+	public Type getType() {
+		return this.type;
+	}
+
+	public void setType(Type type) {
+		this.type = type;
 	}
 
 }

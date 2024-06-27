@@ -97,7 +97,7 @@ public class BedrockCohereEmbeddingModel extends AbstractEmbeddingModel {
 	}
 
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 		Assert.notEmpty(request.getInstructions(), "At least one text is required!");
 
 		final BedrockCohereEmbeddingOptions optionsToUse = this.mergeOptions(request.getOptions());

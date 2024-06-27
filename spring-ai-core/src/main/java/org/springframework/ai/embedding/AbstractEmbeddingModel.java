@@ -21,7 +21,14 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import org.springframework.ai.embedding.observation.DefaultEmbeddingModelObservationConvention;
+import org.springframework.ai.embedding.observation.EmbeddingModelObservationContext;
+import org.springframework.ai.embedding.observation.EmbeddingModelObservationConvention;
+import org.springframework.ai.embedding.observation.EmbeddingModelObservationDocumentation;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.lang.Nullable;
+
+import io.micrometer.observation.ObservationRegistry;
 
 /**
  * Abstract implementation of the {@link EmbeddingModel} interface that provides
@@ -31,9 +38,45 @@ import org.springframework.core.io.DefaultResourceLoader;
  */
 public abstract class AbstractEmbeddingModel implements EmbeddingModel {
 
+	private static final EmbeddingModelObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultEmbeddingModelObservationConvention();
+
 	protected final AtomicInteger embeddingDimensions = new AtomicInteger(-1);
 
 	private static Map<String, Integer> KNOWN_EMBEDDING_DIMENSIONS = loadKnownModelDimensions();
+
+	private final ObservationRegistry observationRegistry;
+
+	@Nullable
+	private final EmbeddingModelObservationConvention observationConvention;
+
+	public AbstractEmbeddingModel() {
+		this(ObservationRegistry.NOOP, null);
+	}
+
+	public AbstractEmbeddingModel(ObservationRegistry observationRegistry) {
+		this(observationRegistry, null);
+	}
+
+	public AbstractEmbeddingModel(ObservationRegistry observationRegistry,
+			@Nullable EmbeddingModelObservationConvention observationConvention) {
+		this.observationRegistry = observationRegistry;
+		this.observationConvention = observationConvention;
+	}
+
+	@Override
+	public EmbeddingResponse call(EmbeddingRequest request) {
+
+		EmbeddingModelObservationContext observationContext = new EmbeddingModelObservationContext();
+		observationContext.setRequest(request);
+		observationContext.setModelClassName(this.getClass().getSimpleName());
+
+		return EmbeddingModelObservationDocumentation.AI_EMBEDDING_MODEL
+			.observation(observationConvention, DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
+					observationRegistry)
+			.observe(() -> this.doCall(request));
+	}
+
+	protected abstract EmbeddingResponse doCall(EmbeddingRequest request);
 
 	/**
 	 * Return the dimension of the requested embedding generative name. If the generative

@@ -15,10 +15,14 @@
 */
 package org.springframework.ai.chat.model.observation;
 
+import java.util.regex.Pattern;
+
 import org.springframework.ai.chat.model.observation.ChatModelObservationDocumentation.LowCardinalityKeyNames;
-import org.springframework.http.client.observation.ClientRequestObservationContext;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.lang.Nullable;
 
 import io.micrometer.common.KeyValue;
+import io.micrometer.common.KeyValues;
 
 /**
  * @author Christian Tzolov
@@ -29,9 +33,13 @@ public class DefaultChatModelObservationConvention implements ChatModelObservati
 
 	private static final String DEFAULT_NAME = "spring.ai.chat.model";
 
+	private static final Pattern PATTERN_BEFORE_PATH = Pattern.compile("^https?://[^/]+/");
+
 	private static final KeyValue MODEL_NONE = KeyValue.of(LowCardinalityKeyNames.MODEL, KeyValue.NONE_VALUE);
 
 	private static final KeyValue STATUS_NONE = KeyValue.of(LowCardinalityKeyNames.STATUS, KeyValue.NONE_VALUE);
+
+	private static final KeyValue URI_NONE = KeyValue.of(LowCardinalityKeyNames.URI, KeyValue.NONE_VALUE);
 
 	private final String name;
 
@@ -48,8 +56,24 @@ public class DefaultChatModelObservationConvention implements ChatModelObservati
 		return this.name;
 	}
 
-	protected KeyValue method(ChatModelObservationContext context) {
-		if (context.getPrompt() != null && context.getPrompt().getOptions() != null) {
+	@Override
+	@Nullable
+	public String getContextualName(ChatModelObservationContext context) {
+		Prompt request = context.getPrompt();
+		String model = (request.getOptions().getModel() != null) ? request.getOptions().getModel() : "";
+		return (request != null ? "SpringAi" + context.getChatModelName() + " " + model : null);
+	}
+
+	@Override
+	public KeyValues getLowCardinalityKeyValues(ChatModelObservationContext context) {
+		// Make sure that KeyValues entries are already sorted by name for better
+		// performance
+		return KeyValues.of(model(context), status(context), uri(context));
+	}
+
+	protected KeyValue model(ChatModelObservationContext context) {
+		if (context.getPrompt() != null && context.getPrompt().getOptions() != null
+				&& context.getPrompt().getOptions().getModel() != null) {
 			return KeyValue.of(LowCardinalityKeyNames.MODEL, context.getPrompt().getOptions().getModel());
 		}
 		else {
@@ -58,12 +82,22 @@ public class DefaultChatModelObservationConvention implements ChatModelObservati
 	}
 
 	protected KeyValue status(ChatModelObservationContext context) {
+
 		if (context.getChatResponse() != null && context.getChatResponse().getMetadata() != null) {
-			return KeyValue.of(LowCardinalityKeyNames.STATUS, context.getPrompt().getOptions().getModel());
+			String finishReason = context.getChatResponse().getResult().getMetadata().getFinishReason();
+			return KeyValue.of(LowCardinalityKeyNames.STATUS, finishReason);
 		}
 		else {
 			return STATUS_NONE;
 		}
+	}
+
+	protected KeyValue uri(ChatModelObservationContext context) {
+		// if (context.getUriTemplate() != null) {
+		// return KeyValue.of(LowCardinalityKeyNames.URI,
+		// extractPath(context.getUriTemplate()));
+		// }
+		return URI_NONE;
 	}
 
 }

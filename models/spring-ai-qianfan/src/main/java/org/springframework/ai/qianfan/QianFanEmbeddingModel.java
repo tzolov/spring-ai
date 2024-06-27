@@ -109,7 +109,7 @@ public class QianFanEmbeddingModel extends AbstractEmbeddingModel {
 	}
 
 	@Override
-	public EmbeddingResponse call(EmbeddingRequest request) {
+	public EmbeddingResponse doCall(EmbeddingRequest request) {
 
 		return this.retryTemplate.execute(ctx -> {
 			QianFanApi.EmbeddingRequest apiRequest = (this.defaultOptions != null)
