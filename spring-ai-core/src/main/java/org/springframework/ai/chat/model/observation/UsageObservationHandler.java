@@ -57,7 +57,7 @@ public class UsageObservationHandler implements ObservationHandler<ChatModelObse
 				.register(this.meterRegistry)
 				.increment(usage.getTotalTokens());
 
-			Counter.builder(context.getName() + ".innput.tokens")
+			Counter.builder(context.getName() + ".input.tokens")
 				.tags(createTags(context))
 				.description("The number of tokens used in the Prompt of the AI request.")
 				.register(this.meterRegistry)
