@@ -17,12 +17,11 @@ package org.springframework.ai.chat.model;
 
 import java.util.Arrays;
 
-import io.micrometer.observation.annotation.Observed;
-import reactor.core.publisher.Flux;
-
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.StreamingModel;
+
+import reactor.core.publisher.Flux;
 
 @FunctionalInterface
 public interface StreamingChatModel extends StreamingModel<Prompt, ChatResponse> {
@@ -42,7 +41,6 @@ public interface StreamingChatModel extends StreamingModel<Prompt, ChatResponse>
 	}
 
 	@Override
-	@Observed(name = "chatStream")
 	Flux<ChatResponse> stream(Prompt prompt);
 
 }
