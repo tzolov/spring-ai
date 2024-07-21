@@ -15,29 +15,32 @@
  */
 package org.springframework.ai.autoconfigure.azure;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import reactor.core.publisher.Flux;
-
 import org.springframework.ai.autoconfigure.azure.openai.AzureOpenAiAutoConfiguration;
+import org.springframework.ai.azure.openai.AzureOpenAiAudioTranscriptionModel;
+import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
 import org.springframework.ai.azure.openai.AzureOpenAiEmbeddingModel;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.embedding.EmbeddingResponse;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import reactor.core.publisher.Flux;
 
 /**
  * @author Christian Tzolov
@@ -157,6 +160,18 @@ public class AzureOpenAiAutoConfigurationIT {
 		// Explicitly enable the embedding auto-configuration.
 		contextRunner.withPropertyValues("spring.ai.azure.openai.embedding.enabled=true").run(context -> {
 			assertThat(context.getBeansOfType(AzureOpenAiEmbeddingModel.class)).isNotEmpty();
+		});
+	}
+
+	@Test
+	void transcribe() {
+		contextRunner.run(context -> {
+			AzureOpenAiAudioTranscriptionModel transcriptionModel = context
+				.getBean(AzureOpenAiAudioTranscriptionModel.class);
+			Resource audioFile = new ClassPathResource("/speech/jfk.flac");
+			String response = transcriptionModel.call(audioFile);
+			assertThat(response).isNotEmpty();
+			// logger.info("Response: " + response);
 		});
 	}
 
