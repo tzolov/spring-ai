@@ -21,6 +21,7 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 import org.springframework.ai.chat.client.advisor.DefaultAroundAdvisorChain;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
@@ -362,9 +364,7 @@ public class DefaultChatClient implements ChatClient {
 
 			// Apply the around advisor chain that terminates with the, last, model call
 			// advisor.
-			ChatResponse advisedResponse = inputRequestSpec.aroundAdvisorChain.nextAroundCall(advisedRequest);
-
-			var advisorContext = new ConcurrentHashMap<>(advisedRequest.adviseContext());
+			AdvisedResponse advisedResponse = inputRequestSpec.aroundAdvisorChain.nextAroundCall(advisedRequest);
 
 			// Apply the Response advisors.
 			if (!CollectionUtils.isEmpty(inputRequestSpec.getAdvisors())) {
@@ -372,11 +372,11 @@ public class DefaultChatClient implements ChatClient {
 						AdvisorObservableHelper.extractResponseAdvisors(inputRequestSpec.getAdvisors()));
 				for (ResponseAdvisor advisor : currentAdvisors) {
 					advisedResponse = AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
-							advisedResponse, advisorContext);
+							advisedResponse);
 				}
 			}
 
-			return advisedResponse;
+			return advisedResponse.response();
 		}
 
 		public ChatResponse chatResponse() {
@@ -466,27 +466,28 @@ public class DefaultChatClient implements ChatClient {
 		private Flux<ChatResponse> doGetFluxChatResponse(DefaultChatClientRequestSpec inputRequest,
 				Observation parentObservation) {
 
-			var advisedRequest = toAdvisedRequest(inputRequest, "");
+			var advisedRequest0 = toAdvisedRequest(inputRequest, "");
 
 			return Flux.fromIterable(AdvisorObservableHelper.extractRequestAdvisors(inputRequest.advisors))
 				.transformDeferredContextual((f, ctx) -> f
 					// This allows us to call blocking code in reduce
 					.publishOn(Schedulers.boundedElastic())
-					.reduce(advisedRequest, (ar, advisor) -> {
+					.reduce(advisedRequest0, (ar, advisor) -> {
 						// Apply the Request advisors
 						return AdvisorObservableHelper.adviseRequest(parentObservation, advisor, ar);
 					}))
 				.single()
-				.flatMapMany(ar -> {
+				.flatMapMany(advisedRequest -> {
 
 					// Apply the around advisor chain that terminates with the, last,
 					// model call advisor.
-					Flux<ChatResponse> advisedResponse = inputRequest.aroundAdvisorChain.nextAroundStream(ar);
-
-					Map<String, Object> advisorContext = new ConcurrentHashMap<>(ar.adviseContext());
+					Flux<ChatResponse> advisedResponseFlux = inputRequest.aroundAdvisorChain
+						.nextAroundStream(advisedRequest);
 
 					// Apply the Response advisors
 					if (!CollectionUtils.isEmpty(inputRequest.getAdvisors())) {
+
+						Map<String, Object> advisorContext = new ConcurrentHashMap<>(advisedRequest.adviseContext());
 
 						var responseAdvisors = new ArrayList<>(
 								AdvisorObservableHelper.extractResponseAdvisors(inputRequest.getAdvisors()));
@@ -500,18 +501,24 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 
 						// PER_ELEMENT and ON_FINISH_ELEMENT
-						advisedResponse = advisedResponse.map(response -> {
+						advisedResponseFlux = advisedResponseFlux.map(chatResponse -> {
+
+							AdvisedResponse advisedResponse = AdvisedResponse.builder()
+								.withResponse(chatResponse)
+								.withAdviseContext(advisedRequest.adviseContext())
+								.build();
+
 							// PER_ELEMENT
 							if (!CollectionUtils.isEmpty(perElementResponseAdvisors)) {
 								for (ResponseAdvisor advisor : perElementResponseAdvisors) {
-									response = AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
-											response, ar.adviseContext());
+									advisedResponse = AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
+											advisedResponse);
 								}
 							}
 							// ON_FINISH_ELEMENT
 							if (!CollectionUtils.isEmpty(onFinishElementResponseAdvisors)) {
 								for (ResponseAdvisor advisor : onFinishElementResponseAdvisors) {
-									boolean withFinishReason = response.getResults()
+									boolean withFinishReason = chatResponse.getResults()
 										.stream()
 										.filter(result -> result != null && result.getMetadata() != null
 												&& StringUtils.hasText(result.getMetadata().getFinishReason()))
@@ -519,12 +526,15 @@ public class DefaultChatClient implements ChatClient {
 										.isPresent();
 
 									if (withFinishReason) {
-										response = AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
-												response, advisorContext);
+										advisedResponse = AdvisorObservableHelper.adviseResponse(parentObservation,
+												advisor, advisedResponse);
 									}
 								}
 							}
-							return response;
+
+							advisorContext.putAll(advisedResponse.adviseContext());
+
+							return advisedResponse.response();
 						});
 
 						// CUSTOM
@@ -535,7 +545,8 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 						if (!CollectionUtils.isEmpty(customResponseAdvisors)) {
 							for (ResponseAdvisor advisor : customResponseAdvisors) {
-								advisedResponse = advisor.adviseResponse(advisedResponse, ar.adviseContext());
+								advisedResponseFlux = advisor.adviseResponse(advisedResponseFlux,
+										advisedRequest.adviseContext());
 							}
 						}
 
@@ -545,16 +556,21 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 
 						if (!CollectionUtils.isEmpty(aggregateResponseAdvisors)) {
-							advisedResponse = new MessageAggregator().aggregate(advisedResponse, chatResponse -> {
-								for (ResponseAdvisor advisor : aggregateResponseAdvisors) {
-									AdvisorObservableHelper.adviseResponse(parentObservation, advisor, chatResponse,
-											advisorContext);
-								}
-							});
+							advisedResponseFlux = new MessageAggregator().aggregate(advisedResponseFlux,
+									chatResponse -> {
+										AdvisedResponse advisedResponse = AdvisedResponse.builder()
+											.withResponse(chatResponse)
+											.withAdviseContext(advisorContext)
+											.build();
+										for (ResponseAdvisor advisor : aggregateResponseAdvisors) {
+											AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
+													advisedResponse);
+										}
+									});
 						}
 					}
 
-					return advisedResponse;
+					return advisedResponseFlux;
 
 				});
 		}
@@ -706,8 +722,8 @@ public class DefaultChatClient implements ChatClient {
 					 }
 
 					 @Override					
-					 public ChatResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {						
-						 return chatModel.call(toPrompt(advisedRequest));
+					 public AdvisedResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {						
+						 return new AdvisedResponse(chatModel.call(toPrompt(advisedRequest)), Collections.unmodifiableMap(advisedRequest.adviseContext()));
 					 }
 				 })
 				 .push(new StreamAroundAdvisor() {

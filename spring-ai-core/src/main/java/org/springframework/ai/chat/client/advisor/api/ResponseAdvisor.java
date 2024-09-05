@@ -39,12 +39,9 @@ public interface ResponseAdvisor extends Advisor {
 	 * @param response the {@link ChatResponse} data to be advised. Represents the row
 	 * {@link ChatResponse} data after the {@link ChatModel#call(Prompt)} method is
 	 * called.
-	 * @param adviseContext the shared data between the advisors in the chain. It is
-	 * shared between all request and response advising points of all advisors in the
-	 * chain.
 	 * @return the advised {@link ChatResponse}.
 	 */
-	ChatResponse adviseResponse(ChatResponse response, Map<String, Object> adviseContext);
+	AdvisedResponse adviseResponse(AdvisedResponse advisedResponse);
 
 	/**
 	 * Different modes of advising the streaming responses.

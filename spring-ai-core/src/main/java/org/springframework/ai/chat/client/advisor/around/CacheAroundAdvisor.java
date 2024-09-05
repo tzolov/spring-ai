@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.ai.chat.client.AdvisedRequest;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAroundAdvisor;
@@ -59,18 +60,18 @@ public class CacheAroundAdvisor implements CallAroundAdvisor, StreamAroundAdviso
 	}
 
 	@Override
-	public ChatResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
+	public AdvisedResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
 		var cachedResponseOption = getCacheEntry(advisedRequest);
 		if (cachedResponseOption.isPresent()) {
-			return cachedResponseOption.get();
+			return new AdvisedResponse(cachedResponseOption.get(), advisedRequest.adviseContext());
 		}
 
-		ChatResponse chatResponse = chain.nextAroundCall(advisedRequest);
+		AdvisedResponse advisedResponse = chain.nextAroundCall(advisedRequest);
 
-		saveCacheEntry(advisedRequest.userText(), chatResponse);
+		saveCacheEntry(advisedRequest.userText(), advisedResponse.response());
 
-		return chatResponse;
+		return advisedResponse;
 	}
 
 	@Override

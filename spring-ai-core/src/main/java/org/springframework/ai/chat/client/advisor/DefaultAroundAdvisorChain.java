@@ -5,6 +5,7 @@ import java.util.Deque;
 import java.util.List;
 
 import org.springframework.ai.chat.client.AdvisedRequest;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
@@ -70,7 +71,7 @@ public class DefaultAroundAdvisorChain implements AroundAdvisorChain {
 	}
 
 	@Override
-	public ChatResponse nextAroundCall(AdvisedRequest advisedRequest) {
+	public AdvisedResponse nextAroundCall(AdvisedRequest advisedRequest) {
 
 		if (this.callAroundAdvisors.isEmpty()) {
 			throw new IllegalStateException("No AroundAdvisor available to execute");

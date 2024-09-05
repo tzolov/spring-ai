@@ -18,8 +18,11 @@ package org.springframework.ai.chat.client;
 
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.RequestAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -44,17 +47,24 @@ public interface RequestResponseAdvisor extends RequestAdvisor, ResponseAdvisor 
 	}
 
 	default AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> adviseContext) {
-		return AdvisedRequest.from(request).withAdviseContext(adviseContext).build();
-	}
-
-	@Override
-	default AdvisedRequest adviseRequest(AdvisedRequest request) {
 		return request;
 	}
 
 	@Override
+	default AdvisedRequest adviseRequest(AdvisedRequest request) {
+		var context = new HashMap<>(request.adviseContext());
+		return AdvisedRequest.from(request).withAdviseContext(Collections.unmodifiableMap(context)).build();
+	}
+
 	default ChatResponse adviseResponse(ChatResponse response, Map<String, Object> adviseContext) {
 		return response;
+	}
+
+	@Override
+	default AdvisedResponse adviseResponse(AdvisedResponse advisedResponse) {
+		var context = new HashMap<>(advisedResponse.adviseContext());
+		var chatResponse = adviseResponse(advisedResponse.response(), context);
+		return new AdvisedResponse(chatResponse, Collections.unmodifiableMap(context));
 	}
 
 }

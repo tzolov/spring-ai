@@ -22,11 +22,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.ai.chat.client.AdvisedRequest;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.model.Content;
 
 /**
@@ -98,13 +98,17 @@ public class PromptChatMemoryAdvisor extends AbstractChatMemoryAdvisor<ChatMemor
 	}
 
 	@Override
-	public ChatResponse adviseResponse(ChatResponse chatResponse, Map<String, Object> context) {
+	public AdvisedResponse adviseResponse(AdvisedResponse advisedResponse) {
 
-		List<Message> assistantMessages = chatResponse.getResults().stream().map(g -> (Message) g.getOutput()).toList();
+		List<Message> assistantMessages = advisedResponse.response()
+			.getResults()
+			.stream()
+			.map(g -> (Message) g.getOutput())
+			.toList();
 
-		this.getChatMemoryStore().add(this.doGetConversationId(context), assistantMessages);
+		this.getChatMemoryStore().add(this.doGetConversationId(advisedResponse.adviseContext()), assistantMessages);
 
-		return chatResponse;
+		return advisedResponse;
 	}
 
 }

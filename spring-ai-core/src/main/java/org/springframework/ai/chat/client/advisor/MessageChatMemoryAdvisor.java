@@ -18,13 +18,12 @@ package org.springframework.ai.chat.client.advisor;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.ai.chat.client.AdvisedRequest;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatResponse;
 
 /**
  * Memory is retrieved added as a collection of messages to the prompt
@@ -67,13 +66,17 @@ public class MessageChatMemoryAdvisor extends AbstractChatMemoryAdvisor<ChatMemo
 	}
 
 	@Override
-	public ChatResponse adviseResponse(ChatResponse chatResponse, Map<String, Object> context) {
+	public AdvisedResponse adviseResponse(AdvisedResponse advisedResponse) {
 
-		List<Message> assistantMessages = chatResponse.getResults().stream().map(g -> (Message) g.getOutput()).toList();
+		List<Message> assistantMessages = advisedResponse.response()
+			.getResults()
+			.stream()
+			.map(g -> (Message) g.getOutput())
+			.toList();
 
-		this.getChatMemoryStore().add(this.doGetConversationId(context), assistantMessages);
+		this.getChatMemoryStore().add(this.doGetConversationId(advisedResponse.adviseContext()), assistantMessages);
 
-		return chatResponse;
+		return advisedResponse;
 	}
 
 }

@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.AdvisedRequest;
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.RequestAdvisor;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.model.ModelOptionsUtils;
@@ -69,9 +70,9 @@ public class SimpleLoggerAdvisor implements RequestAdvisor, ResponseAdvisor {
 	}
 
 	@Override
-	public ChatResponse adviseResponse(ChatResponse response, Map<String, Object> context) {
-		logger.debug("response: {}", this.responseToString.apply(response));
-		return response;
+	public AdvisedResponse adviseResponse(AdvisedResponse advisedResponse) {
+		logger.debug("response: {}", this.responseToString.apply(advisedResponse.response()));
+		return advisedResponse;
 	}
 
 	@Override

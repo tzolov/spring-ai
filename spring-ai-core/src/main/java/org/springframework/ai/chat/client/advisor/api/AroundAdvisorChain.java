@@ -7,7 +7,7 @@ import reactor.core.publisher.Flux;
 
 public interface AroundAdvisorChain {
 
-	ChatResponse nextAroundCall(AdvisedRequest advisedRequest);
+	AdvisedResponse nextAroundCall(AdvisedRequest advisedRequest);
 
 	Flux<ChatResponse> nextAroundStream(AdvisedRequest advisedRequest);
 

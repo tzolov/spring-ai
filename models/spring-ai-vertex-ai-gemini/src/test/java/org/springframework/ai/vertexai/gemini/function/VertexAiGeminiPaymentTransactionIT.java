@@ -30,9 +30,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.AdvisedRequest;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.RequestAdvisor;
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.model.function.FunctionCallbackContext;
 import org.springframework.ai.model.function.FunctionCallbackWrapper.Builder.SchemaType;
 import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatModel;
@@ -88,9 +88,9 @@ public class VertexAiGeminiPaymentTransactionIT {
 		}
 
 		@Override
-		public ChatResponse adviseResponse(ChatResponse response, Map<String, Object> context) {
-			logger.info("Response: " + response);
-			return response;
+		public AdvisedResponse adviseResponse(AdvisedResponse advisedResponse) {
+			logger.info("Response: " + advisedResponse.response());
+			return advisedResponse;
 		}
 
 	}
