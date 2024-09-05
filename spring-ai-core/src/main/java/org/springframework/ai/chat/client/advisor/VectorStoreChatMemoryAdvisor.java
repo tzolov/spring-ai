@@ -78,13 +78,14 @@ public class VectorStoreChatMemoryAdvisor extends AbstractChatMemoryAdvisor<Vect
 	}
 
 	@Override
-	public AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> context) {
+	public AdvisedRequest adviseRequest(AdvisedRequest request) {
 
 		String advisedSystemText = request.systemText() + System.lineSeparator() + this.systemTextAdvise;
 
 		var searchRequest = SearchRequest.query(request.userText())
-			.withTopK(this.doGetChatMemoryRetrieveSize(context))
-			.withFilterExpression(DOCUMENT_METADATA_CONVERSATION_ID + "=='" + this.doGetConversationId(context) + "'");
+			.withTopK(this.doGetChatMemoryRetrieveSize(request.adviseContext()))
+			.withFilterExpression(DOCUMENT_METADATA_CONVERSATION_ID + "=='"
+					+ this.doGetConversationId(request.adviseContext()) + "'");
 
 		List<Document> documents = this.getChatMemoryStore().similaritySearch(searchRequest);
 
@@ -101,7 +102,8 @@ public class VectorStoreChatMemoryAdvisor extends AbstractChatMemoryAdvisor<Vect
 			.build();
 
 		UserMessage userMessage = new UserMessage(request.userText(), request.media());
-		this.getChatMemoryStore().write(toDocuments(List.of(userMessage), this.doGetConversationId(context)));
+		this.getChatMemoryStore()
+			.write(toDocuments(List.of(userMessage), this.doGetConversationId(request.adviseContext())));
 
 		return advisedRequest;
 	}

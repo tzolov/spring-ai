@@ -30,10 +30,9 @@ public interface CallAroundAdvisor extends Advisor {
 	/**
 	 * Around advice that wraps the ChatModel#call(Prompt) method.
 	 * @param advisedRequest the advised request
-	 * @param adviceContext the advice context
 	 * @param chain the advisor chain
 	 * @return the response
 	 */
-	ChatResponse aroundCall(AdvisedRequest advisedRequest, Map<String, Object> adviceContext, AroundAdvisorChain chain);
+	ChatResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain);
 
 }

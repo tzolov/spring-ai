@@ -32,27 +32,25 @@ public class SafeGuardAroundAdvisor implements CallAroundAdvisor, StreamAroundAd
 	}
 
 	@Override
-	public ChatResponse aroundCall(AdvisedRequest advisedRequest, Map<String, Object> adviceContext,
-			AroundAdvisorChain chain) {
+	public ChatResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
 		if (!CollectionUtils.isEmpty(this.sensitiveWords)
 				&& sensitiveWords.stream().anyMatch(w -> advisedRequest.userText().contains(w))) {
 			return ChatResponse.builder().withGenerations(List.of()).build();
 		}
 
-		return chain.nextAroundCall(advisedRequest, adviceContext);
+		return chain.nextAroundCall(advisedRequest);
 	}
 
 	@Override
-	public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, Map<String, Object> adviceContext,
-			AroundAdvisorChain chain) {
+	public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
 		if (!CollectionUtils.isEmpty(this.sensitiveWords)
 				&& sensitiveWords.stream().anyMatch(w -> advisedRequest.userText().contains(w))) {
 			return Flux.empty();
 		}
 
-		return chain.nextAroundStream(advisedRequest, adviceContext);
+		return chain.nextAroundStream(advisedRequest);
 
 	}
 

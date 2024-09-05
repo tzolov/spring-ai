@@ -32,9 +32,9 @@ import org.springframework.ai.chat.client.advisor.DefaultAroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
+import org.springframework.ai.chat.client.advisor.api.RequestAdvisor;
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor;
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor.StreamResponseMode;
-import org.springframework.ai.chat.client.advisor.api.RequestAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAroundAdvisor;
 import org.springframework.ai.chat.client.advisor.observation.AdvisorObservableHelper;
 import org.springframework.ai.chat.client.observation.ChatClientObservationContext;
@@ -348,29 +348,23 @@ public class DefaultChatClient implements ChatClient {
 		private ChatResponse doGetChatResponse(DefaultChatClientRequestSpec inputRequestSpec, String formatParam,
 				Observation parentObservation) {
 
-			Map<String, Object> advisorContext = new ConcurrentHashMap<>();
-			if (StringUtils.hasText(formatParam)) {
-				advisorContext.put("formatParam", formatParam);
-			}
-			advisorContext.putAll(inputRequestSpec.getAdvisorParams());
+			AdvisedRequest advisedRequest = toAdvisedRequest(inputRequestSpec, formatParam);
 
-			// DefaultChatClientRequestSpec advisedRequestSpec = inputRequestSpec;
-			AdvisedRequest advisedRequest = toAdvisedRequest(inputRequestSpec);
 			if (!CollectionUtils.isEmpty(inputRequestSpec.advisors)) {
 
 				// Apply the Request advisors
 				var currentAdvisors = new ArrayList<>(
 						AdvisorObservableHelper.extractRequestAdvisors(inputRequestSpec.advisors));
 				for (RequestAdvisor advisor : currentAdvisors) {
-					advisedRequest = AdvisorObservableHelper.adviseRequest(parentObservation, advisor, advisedRequest,
-							advisorContext);
+					advisedRequest = AdvisorObservableHelper.adviseRequest(parentObservation, advisor, advisedRequest);
 				}
 			}
 
 			// Apply the around advisor chain that terminates with the, last, model call
 			// advisor.
-			ChatResponse advisedResponse = inputRequestSpec.aroundAdvisorChain.nextAroundCall(advisedRequest,
-					advisorContext);
+			ChatResponse advisedResponse = inputRequestSpec.aroundAdvisorChain.nextAroundCall(advisedRequest);
+
+			var advisorContext = new ConcurrentHashMap<>(advisedRequest.adviseContext());
 
 			// Apply the Response advisors.
 			if (!CollectionUtils.isEmpty(inputRequestSpec.getAdvisors())) {
@@ -395,7 +389,7 @@ public class DefaultChatClient implements ChatClient {
 
 	}
 
-	private static Prompt toPrompt(AdvisedRequest advisedRequest, String formatParam) {
+	private static Prompt toPrompt(AdvisedRequest advisedRequest) {
 
 		var messages = new ArrayList<Message>(advisedRequest.messages());
 
@@ -406,6 +400,8 @@ public class DefaultChatClient implements ChatClient {
 			}
 			messages.add(new SystemMessage(processedSystemText));
 		}
+
+		String formatParam = (String) advisedRequest.adviseContext().get("formatParam");
 
 		var processedUserText = StringUtils.hasText(formatParam)
 				? advisedRequest.userText() + System.lineSeparator() + "{spring_ai_soc_format}"
@@ -467,33 +463,27 @@ public class DefaultChatClient implements ChatClient {
 			});
 		}
 
-		record AdvisedRequestWithContext(AdvisedRequest request, Map<String, Object> advisorContext) {
-		}
-
 		private Flux<ChatResponse> doGetFluxChatResponse(DefaultChatClientRequestSpec inputRequest,
 				Observation parentObservation) {
 
-			Map<String, Object> advisorContext = new ConcurrentHashMap<>(inputRequest.getAdvisorParams());
-
-			var reqWithContext = new AdvisedRequestWithContext(toAdvisedRequest(inputRequest), advisorContext);
+			var advisedRequest = toAdvisedRequest(inputRequest, "");
 
 			return Flux.fromIterable(AdvisorObservableHelper.extractRequestAdvisors(inputRequest.advisors))
 				.transformDeferredContextual((f, ctx) -> f
 					// This allows us to call blocking code in reduce
 					.publishOn(Schedulers.boundedElastic())
-					.reduce(reqWithContext, (rwc, advisor) -> {
+					.reduce(advisedRequest, (ar, advisor) -> {
 						// Apply the Request advisors
-						AdvisedRequest advisedRequest = AdvisorObservableHelper.adviseRequest(parentObservation,
-								advisor, rwc.request, rwc.advisorContext);
-						return new AdvisedRequestWithContext(advisedRequest, rwc.advisorContext);
+						return AdvisorObservableHelper.adviseRequest(parentObservation, advisor, ar);
 					}))
 				.single()
-				.flatMapMany(rwc -> {
+				.flatMapMany(ar -> {
 
 					// Apply the around advisor chain that terminates with the, last,
 					// model call advisor.
-					Flux<ChatResponse> advisedResponse = inputRequest.aroundAdvisorChain.nextAroundStream(rwc.request,
-							rwc.advisorContext);
+					Flux<ChatResponse> advisedResponse = inputRequest.aroundAdvisorChain.nextAroundStream(ar);
+
+					Map<String, Object> advisorContext = new ConcurrentHashMap<>(ar.adviseContext());
 
 					// Apply the Response advisors
 					if (!CollectionUtils.isEmpty(inputRequest.getAdvisors())) {
@@ -515,7 +505,7 @@ public class DefaultChatClient implements ChatClient {
 							if (!CollectionUtils.isEmpty(perElementResponseAdvisors)) {
 								for (ResponseAdvisor advisor : perElementResponseAdvisors) {
 									response = AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
-											response, rwc.advisorContext);
+											response, ar.adviseContext());
 								}
 							}
 							// ON_FINISH_ELEMENT
@@ -545,7 +535,7 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 						if (!CollectionUtils.isEmpty(customResponseAdvisors)) {
 							for (ResponseAdvisor advisor : customResponseAdvisors) {
-								advisedResponse = advisor.adviseResponse(advisedResponse, rwc.advisorContext);
+								advisedResponse = advisor.adviseResponse(advisedResponse, ar.adviseContext());
 							}
 						}
 
@@ -716,10 +706,8 @@ public class DefaultChatClient implements ChatClient {
 					 }
 
 					 @Override					
-					 public ChatResponse aroundCall(AdvisedRequest advisedRequest, Map<String, Object> adviceContext,
-							 AroundAdvisorChain chain) {
-						 String formatParam = (String) adviceContext.get("formatParam");
-						 return chatModel.call(toPrompt(advisedRequest, formatParam));
+					 public ChatResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {						
+						 return chatModel.call(toPrompt(advisedRequest));
 					 }
 				 })
 				 .push(new StreamAroundAdvisor() {
@@ -729,9 +717,8 @@ public class DefaultChatClient implements ChatClient {
 						 return StreamAroundAdvisor.class.getSimpleName();
 					 }
 					 @Override
-					 public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, Map<String, Object> adviceContext,
-							 AroundAdvisorChain chain) {
-						 return chatModel.stream(toPrompt(advisedRequest, null));
+					 public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
+						 return chatModel.stream(toPrompt(advisedRequest));
 					 }
 				 })
 				 .pushAll(this.advisors)
@@ -913,11 +900,16 @@ public class DefaultChatClient implements ChatClient {
 
 	}
 
-	private static AdvisedRequest toAdvisedRequest(DefaultChatClientRequestSpec inputRequest) {
+	private static AdvisedRequest toAdvisedRequest(DefaultChatClientRequestSpec inputRequest, String formatParam) {
+		Map<String, Object> advisorContext = new ConcurrentHashMap<>(inputRequest.getAdvisorParams());
+		if (StringUtils.hasText(formatParam)) {
+			advisorContext.put("formatParam", formatParam);
+		}
+
 		return new AdvisedRequest(inputRequest.chatModel, inputRequest.userText, inputRequest.systemText,
 				inputRequest.chatOptions, inputRequest.media, inputRequest.functionNames,
 				inputRequest.functionCallbacks, inputRequest.messages, inputRequest.userParams,
-				inputRequest.systemParams, inputRequest.advisors, inputRequest.advisorParams);
+				inputRequest.systemParams, inputRequest.advisors, inputRequest.advisorParams, advisorContext);
 	}
 
 	public static DefaultChatClientRequestSpec toDefaultChatClientRequestSpec(AdvisedRequest advisedRequest,

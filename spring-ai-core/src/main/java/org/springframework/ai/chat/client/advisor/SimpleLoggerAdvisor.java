@@ -63,7 +63,7 @@ public class SimpleLoggerAdvisor implements RequestAdvisor, ResponseAdvisor {
 	}
 
 	@Override
-	public AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> context) {
+	public AdvisedRequest adviseRequest(AdvisedRequest request) {
 		logger.debug("request: {}", this.requestToString.apply(request));
 		return request;
 	}

@@ -98,7 +98,9 @@ public class QuestionAnswerAdvisor implements RequestAdvisor, ResponseAdvisor {
 	}
 
 	@Override
-	public AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> context) {
+	public AdvisedRequest adviseRequest(AdvisedRequest request) {
+
+		var context = new HashMap<>(request.adviseContext());
 
 		// 1. Advise the system text.
 		String advisedUserText = request.userText() + System.lineSeparator() + this.userTextAdvise;
@@ -124,6 +126,7 @@ public class QuestionAnswerAdvisor implements RequestAdvisor, ResponseAdvisor {
 		AdvisedRequest advisedRequest = AdvisedRequest.from(request)
 			.withUserText(advisedUserText)
 			.withUserParams(advisedUserParams)
+			.withAdviseContext(context)
 			.build();
 
 		return advisedRequest;

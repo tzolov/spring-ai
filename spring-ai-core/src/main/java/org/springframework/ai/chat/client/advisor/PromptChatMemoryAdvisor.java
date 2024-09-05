@@ -66,11 +66,12 @@ public class PromptChatMemoryAdvisor extends AbstractChatMemoryAdvisor<ChatMemor
 	}
 
 	@Override
-	public AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> context) {
+	public AdvisedRequest adviseRequest(AdvisedRequest request) {
 
 		// 1. Advise system parameters.
 		List<Message> memoryMessages = this.getChatMemoryStore()
-			.get(this.doGetConversationId(context), this.doGetChatMemoryRetrieveSize(context));
+			.get(this.doGetConversationId(request.adviseContext()),
+					this.doGetChatMemoryRetrieveSize(request.adviseContext()));
 
 		String memory = (memoryMessages != null) ? memoryMessages.stream()
 			.filter(m -> m.getMessageType() == MessageType.USER || m.getMessageType() == MessageType.ASSISTANT)
@@ -91,7 +92,7 @@ public class PromptChatMemoryAdvisor extends AbstractChatMemoryAdvisor<ChatMemor
 
 		// 4. Add the new user input to the conversation memory.
 		UserMessage userMessage = new UserMessage(request.userText(), request.media());
-		this.getChatMemoryStore().add(this.doGetConversationId(context), userMessage);
+		this.getChatMemoryStore().add(this.doGetConversationId(request.adviseContext()), userMessage);
 
 		return advisedRequest;
 	}

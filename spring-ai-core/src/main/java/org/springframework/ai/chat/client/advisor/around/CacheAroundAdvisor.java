@@ -59,15 +59,14 @@ public class CacheAroundAdvisor implements CallAroundAdvisor, StreamAroundAdviso
 	}
 
 	@Override
-	public ChatResponse aroundCall(AdvisedRequest advisedRequest, Map<String, Object> adviceContext,
-			AroundAdvisorChain chain) {
+	public ChatResponse aroundCall(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
-		var cachedResponseOption = getCacheEntry(advisedRequest, adviceContext);
+		var cachedResponseOption = getCacheEntry(advisedRequest);
 		if (cachedResponseOption.isPresent()) {
 			return cachedResponseOption.get();
 		}
 
-		ChatResponse chatResponse = chain.nextAroundCall(advisedRequest, adviceContext);
+		ChatResponse chatResponse = chain.nextAroundCall(advisedRequest);
 
 		saveCacheEntry(advisedRequest.userText(), chatResponse);
 
@@ -75,15 +74,14 @@ public class CacheAroundAdvisor implements CallAroundAdvisor, StreamAroundAdviso
 	}
 
 	@Override
-	public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, Map<String, Object> adviceContext,
-			AroundAdvisorChain chain) {
+	public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
-		var cachedResponseOption = getCacheEntry(advisedRequest, adviceContext);
+		var cachedResponseOption = getCacheEntry(advisedRequest);
 		if (cachedResponseOption.isPresent()) {
 			return Flux.just(cachedResponseOption.get());
 		}
 
-		Flux<ChatResponse> fluxChatResponse = chain.nextAroundStream(advisedRequest, adviceContext);
+		Flux<ChatResponse> fluxChatResponse = chain.nextAroundStream(advisedRequest);
 
 		return new MessageAggregator().aggregate(fluxChatResponse, chatResponse -> {
 			saveCacheEntry(advisedRequest.userText(), chatResponse);
@@ -97,7 +95,7 @@ public class CacheAroundAdvisor implements CallAroundAdvisor, StreamAroundAdviso
 		}
 	}
 
-	private Optional<ChatResponse> getCacheEntry(AdvisedRequest advisedRequest, Map<String, Object> adviceContext) {
+	private Optional<ChatResponse> getCacheEntry(AdvisedRequest advisedRequest) {
 
 		// TODO: convert into pompty first or at least materialize the user params.
 		String userText = advisedRequest.userText();

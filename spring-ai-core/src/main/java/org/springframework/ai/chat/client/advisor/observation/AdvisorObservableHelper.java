@@ -38,20 +38,20 @@ public abstract class AdvisorObservableHelper {
 	public static final AdvisorObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultAdvisorObservationConvention();
 
 	public static AdvisedRequest adviseRequest(Observation parentObservation, RequestAdvisor advisor,
-			AdvisedRequest advisedRequest, Map<String, Object> advisorContext) {
+			AdvisedRequest advisedRequest) {
 
 		var observationContext = AdvisorObservationContext.builder()
 			.withAdvisorName(advisor.getName())
 			.withAdvisorType(AdvisorObservationContext.Type.BEFORE)
 			.withAdvisedRequest(advisedRequest)
-			.withAdvisorRequestContext(advisorContext)
+			.withAdvisorRequestContext(advisedRequest.adviseContext())
 			.build();
 
 		return AdvisorObservationDocumentation.AI_ADVISOR
 			.observation(null, DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
 					parentObservation.getObservationRegistry())
 			.parentObservation(parentObservation)
-			.observe(() -> advisor.adviseRequest(advisedRequest, advisorContext));
+			.observe(() -> advisor.adviseRequest(advisedRequest));
 	}
 
 	public static ChatResponse adviseResponse(Observation parentObservation, ResponseAdvisor advisor,

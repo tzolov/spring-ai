@@ -44,11 +44,12 @@ import org.springframework.ai.model.function.FunctionCallback;
  * @param systemParams the map of system parameters
  * @param advisors the list of request response advisors
  * @param advisorParams the map of advisor parameters
+ * @param adviseContext the map of advise context
  */
 public record AdvisedRequest(ChatModel chatModel, String userText, String systemText, ChatOptions chatOptions,
 		List<Media> media, List<String> functionNames, List<FunctionCallback> functionCallbacks, List<Message> messages,
 		Map<String, Object> userParams, Map<String, Object> systemParams, List<Advisor> advisors,
-		Map<String, Object> advisorParams) {
+		Map<String, Object> advisorParams, Map<String, Object> adviseContext) {
 
 	public static Builder from(AdvisedRequest from) {
 		Builder builder = new Builder();
@@ -64,6 +65,7 @@ public record AdvisedRequest(ChatModel chatModel, String userText, String system
 		builder.systemParams = from.systemParams;
 		builder.advisors = from.advisors;
 		builder.advisorParams = from.advisorParams;
+		builder.adviseContext = from.adviseContext;
 		return builder;
 	}
 
@@ -96,6 +98,8 @@ public record AdvisedRequest(ChatModel chatModel, String userText, String system
 		private List<Advisor> advisors = List.of();
 
 		private Map<String, Object> advisorParams = Map.of();
+
+		private Map<String, Object> adviseContext = Map.of();
 
 		public Builder withChatModel(ChatModel chatModel) {
 			this.chatModel = chatModel;
@@ -157,10 +161,15 @@ public record AdvisedRequest(ChatModel chatModel, String userText, String system
 			return this;
 		}
 
+		public Builder withAdviseContext(Map<String, Object> adviseContext) {
+			this.adviseContext = adviseContext;
+			return this;
+		}
+
 		public AdvisedRequest build() {
 			return new AdvisedRequest(chatModel, this.userText, this.systemText, this.chatOptions, this.media,
 					this.functionNames, this.functionCallbacks, this.messages, this.userParams, this.systemParams,
-					this.advisors, this.advisorParams);
+					this.advisors, this.advisorParams, this.adviseContext);
 		}
 
 	}

@@ -43,8 +43,12 @@ public interface RequestResponseAdvisor extends RequestAdvisor, ResponseAdvisor 
 		return this.getClass().getSimpleName();
 	}
 
-	@Override
 	default AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> adviseContext) {
+		return AdvisedRequest.from(request).withAdviseContext(adviseContext).build();
+	}
+
+	@Override
+	default AdvisedRequest adviseRequest(AdvisedRequest request) {
 		return request;
 	}
 

@@ -43,11 +43,11 @@ public class MessageChatMemoryAdvisor extends AbstractChatMemoryAdvisor<ChatMemo
 	}
 
 	@Override
-	public AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> context) {
+	public AdvisedRequest adviseRequest(AdvisedRequest request) {
 
-		String conversationId = this.doGetConversationId(context);
+		String conversationId = this.doGetConversationId(request.adviseContext());
 
-		int chatMemoryRetrieveSize = this.doGetChatMemoryRetrieveSize(context);
+		int chatMemoryRetrieveSize = this.doGetChatMemoryRetrieveSize(request.adviseContext());
 
 		// 1. Retrieve the chat memory for the current conversation.
 		List<Message> memoryMessages = this.getChatMemoryStore().get(conversationId, chatMemoryRetrieveSize);
@@ -61,7 +61,7 @@ public class MessageChatMemoryAdvisor extends AbstractChatMemoryAdvisor<ChatMemo
 
 		// 4. Add the new user input to the conversation memory.
 		UserMessage userMessage = new UserMessage(request.userText(), request.media());
-		this.getChatMemoryStore().add(this.doGetConversationId(context), userMessage);
+		this.getChatMemoryStore().add(this.doGetConversationId(request.adviseContext()), userMessage);
 
 		return advisedRequest;
 	}

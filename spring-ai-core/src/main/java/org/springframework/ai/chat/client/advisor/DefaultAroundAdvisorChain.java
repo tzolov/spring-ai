@@ -3,7 +3,6 @@ package org.springframework.ai.chat.client.advisor;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.ai.chat.client.AdvisedRequest;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
@@ -71,7 +70,7 @@ public class DefaultAroundAdvisorChain implements AroundAdvisorChain {
 	}
 
 	@Override
-	public ChatResponse nextAroundCall(AdvisedRequest advisedRequest, Map<String, Object> adviceContext) {
+	public ChatResponse nextAroundCall(AdvisedRequest advisedRequest) {
 
 		if (this.callAroundAdvisors.isEmpty()) {
 			throw new IllegalStateException("No AroundAdvisor available to execute");
@@ -83,17 +82,17 @@ public class DefaultAroundAdvisorChain implements AroundAdvisorChain {
 			.withAdvisorName(advisor.getName())
 			.withAdvisorType(AdvisorObservationContext.Type.AROUND)
 			.withAdvisedRequest(advisedRequest)
-			.withAdvisorRequestContext(adviceContext)
+			.withAdvisorRequestContext(advisedRequest.adviseContext())
 			.build();
 
 		return AdvisorObservationDocumentation.AI_ADVISOR
 			.observation(null, AdvisorObservableHelper.DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
 					this.observationRegistry)
-			.observe(() -> advisor.aroundCall(advisedRequest, adviceContext, this));
+			.observe(() -> advisor.aroundCall(advisedRequest, this));
 	}
 
 	@Override
-	public Flux<ChatResponse> nextAroundStream(AdvisedRequest advisedRequest, Map<String, Object> adviceContext) {
+	public Flux<ChatResponse> nextAroundStream(AdvisedRequest advisedRequest) {
 
 		return Flux.deferContextual(contextView -> {
 
@@ -107,7 +106,7 @@ public class DefaultAroundAdvisorChain implements AroundAdvisorChain {
 				.withAdvisorName(advisor.getName())
 				.withAdvisorType(AdvisorObservationContext.Type.AROUND)
 				.withAdvisedRequest(advisedRequest)
-				.withAdvisorRequestContext(adviceContext)
+				.withAdvisorRequestContext(advisedRequest.adviseContext())
 				.build();
 
 			var observation = AdvisorObservationDocumentation.AI_ADVISOR.observation(null,
@@ -116,12 +115,9 @@ public class DefaultAroundAdvisorChain implements AroundAdvisorChain {
 
 			observation.parentObservation(contextView.getOrDefault(ObservationThreadLocalAccessor.KEY, null)).start();
 
-			return advisor.aroundStream(advisedRequest, adviceContext, this)
-				.doOnError(observation::error)
-				.doFinally(s -> {
-					observation.stop();
-				})
-				.contextWrite(ctx -> ctx.put(ObservationThreadLocalAccessor.KEY, observation));
+			return advisor.aroundStream(advisedRequest, this).doOnError(observation::error).doFinally(s -> {
+				observation.stop();
+			}).contextWrite(ctx -> ctx.put(ObservationThreadLocalAccessor.KEY, observation));
 		});
 	}
 

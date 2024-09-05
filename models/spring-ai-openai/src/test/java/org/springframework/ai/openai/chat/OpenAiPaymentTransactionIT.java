@@ -74,7 +74,7 @@ public class OpenAiPaymentTransactionIT {
 		}
 
 		@Override
-		public AdvisedRequest adviseRequest(AdvisedRequest request, Map<String, Object> context) {
+		public AdvisedRequest adviseRequest(AdvisedRequest request) {
 			logger.info("System text: \n" + request.systemText());
 			logger.info("System params: " + request.systemParams());
 			logger.info("User text: \n" + request.userText());
