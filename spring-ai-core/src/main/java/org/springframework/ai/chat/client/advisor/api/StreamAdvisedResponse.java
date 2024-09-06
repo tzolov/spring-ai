@@ -15,16 +15,32 @@
 */
 package org.springframework.ai.chat.client.advisor.api;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.springframework.ai.chat.model.ChatResponse;
+
+import reactor.core.publisher.Flux;
 
 /**
  * @author Christian Tzolov
  * @since 1.0.0
  */
+public record StreamAdvisedResponse(
+	// @formatter:off
+	Flux<ChatResponse> responses, 
+	Map<String, Object> adviseContext) {
+	// @formatter:on
 
-public record AdvisedResponse(ChatResponse response, Map<String, Object> adviseContext) {
+	public StreamAdvisedResponse transform(Function<Flux<ChatResponse>, Flux<ChatResponse>> transformer) {
+		return new StreamAdvisedResponse(transformer.apply(this.responses), this.adviseContext());
+	}
 
+	public StreamAdvisedResponse transform(Function<Flux<ChatResponse>, Flux<ChatResponse>> transformer,
+			Function<Map<String, Object>, Map<String, Object>> contextTransformer) {
+		var map = new HashMap<>(this.adviseContext());
+		return new StreamAdvisedResponse(transformer.apply(this.responses), contextTransformer.apply(map));
+	}
 
 }

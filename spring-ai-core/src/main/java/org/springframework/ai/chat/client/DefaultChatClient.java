@@ -36,6 +36,7 @@ import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
 import org.springframework.ai.chat.client.advisor.api.RequestAdvisor;
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor;
+import org.springframework.ai.chat.client.advisor.api.StreamAdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.ResponseAdvisor.StreamResponseMode;
 import org.springframework.ai.chat.client.advisor.api.StreamAroundAdvisor;
 import org.springframework.ai.chat.client.advisor.observation.AdvisorObservableHelper;
@@ -481,13 +482,14 @@ public class DefaultChatClient implements ChatClient {
 
 					// Apply the around advisor chain that terminates with the, last,
 					// model call advisor.
-					Flux<ChatResponse> advisedResponseFlux = inputRequest.aroundAdvisorChain
+					StreamAdvisedResponse streamAdvisedResponse = inputRequest.aroundAdvisorChain
 						.nextAroundStream(advisedRequest);
 
 					// Apply the Response advisors
 					if (!CollectionUtils.isEmpty(inputRequest.getAdvisors())) {
 
-						Map<String, Object> advisorContext = new ConcurrentHashMap<>(advisedRequest.adviseContext());
+						// Map<String, Object> advisorContext = new
+						// ConcurrentHashMap<>(advisedRequest.adviseContext());
 
 						var responseAdvisors = new ArrayList<>(
 								AdvisorObservableHelper.extractResponseAdvisors(inputRequest.getAdvisors()));
@@ -501,41 +503,83 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 
 						// PER_ELEMENT and ON_FINISH_ELEMENT
-						advisedResponseFlux = advisedResponseFlux.map(chatResponse -> {
+						streamAdvisedResponse = streamAdvisedResponse.transform(chatResponses -> {
+							return chatResponses.map(chatResponse -> {
 
-							AdvisedResponse advisedResponse = AdvisedResponse.builder()
-								.withResponse(chatResponse)
-								.withAdviseContext(advisedRequest.adviseContext())
-								.build();
+								AdvisedResponse advisedResponse = new AdvisedResponse(chatResponse,
+										streamAdvisedResponse.adviseContext());
 
-							// PER_ELEMENT
-							if (!CollectionUtils.isEmpty(perElementResponseAdvisors)) {
-								for (ResponseAdvisor advisor : perElementResponseAdvisors) {
-									advisedResponse = AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
-											advisedResponse);
-								}
-							}
-							// ON_FINISH_ELEMENT
-							if (!CollectionUtils.isEmpty(onFinishElementResponseAdvisors)) {
-								for (ResponseAdvisor advisor : onFinishElementResponseAdvisors) {
-									boolean withFinishReason = chatResponse.getResults()
-										.stream()
-										.filter(result -> result != null && result.getMetadata() != null
-												&& StringUtils.hasText(result.getMetadata().getFinishReason()))
-										.findFirst()
-										.isPresent();
-
-									if (withFinishReason) {
+								// PER_ELEMENT
+								if (!CollectionUtils.isEmpty(perElementResponseAdvisors)) {
+									for (ResponseAdvisor advisor : perElementResponseAdvisors) {
 										advisedResponse = AdvisorObservableHelper.adviseResponse(parentObservation,
 												advisor, advisedResponse);
 									}
 								}
-							}
+								// ON_FINISH_ELEMENT
+								// if (!CollectionUtils.isEmpty(onFinishElementResponseAdvisors)) {
+								// 	for (ResponseAdvisor advisor : onFinishElementResponseAdvisors) {
+								// 		boolean withFinishReason = chatResponse.getResults()
+								// 			.stream()
+								// 			.filter(result -> result != null && result.getMetadata() != null
+								// 					&& StringUtils.hasText(result.getMetadata().getFinishReason()))
+								// 			.findFirst()
+								// 			.isPresent();
 
-							advisorContext.putAll(advisedResponse.adviseContext());
+								// 		if (withFinishReason) {
+								// 			advisedResponse = AdvisorObservableHelper.adviseResponse(parentObservation,
+								// 					advisor, advisedResponse);
+								// 		}
+								// 	}
+								// }
 
-							return advisedResponse.response();
+								return advisedResponse.response();
+							});
 						});
+
+						// // PER_ELEMENT and ON_FINISH_ELEMENT
+						// advisedResponseStream = advisedResponseStream.map(chatResponse
+						// -> {
+
+						// AdvisedResponse advisedResponse = AdvisedResponse.builder()
+						// .withResponse(chatResponse)
+						// .withAdviseContext(advisedResponseStream.adviseContext())
+						// .build();
+
+						// // PER_ELEMENT
+						// if (!CollectionUtils.isEmpty(perElementResponseAdvisors)) {
+						// for (ResponseAdvisor advisor : perElementResponseAdvisors) {
+						// advisedResponse =
+						// AdvisorObservableHelper.adviseResponse(parentObservation,
+						// advisor,
+						// advisedResponse);
+						// }
+						// }
+						// // ON_FINISH_ELEMENT
+						// if (!CollectionUtils.isEmpty(onFinishElementResponseAdvisors))
+						// {
+						// for (ResponseAdvisor advisor : onFinishElementResponseAdvisors)
+						// {
+						// boolean withFinishReason = chatResponse.getResults()
+						// .stream()
+						// .filter(result -> result != null && result.getMetadata() !=
+						// null
+						// && StringUtils.hasText(result.getMetadata().getFinishReason()))
+						// .findFirst()
+						// .isPresent();
+
+						// if (withFinishReason) {
+						// advisedResponse =
+						// AdvisorObservableHelper.adviseResponse(parentObservation,
+						// advisor, advisedResponse);
+						// }
+						// }
+						// }
+
+						// advisorContext.putAll(advisedResponse.adviseContext());
+
+						// return advisedResponse.response();
+						// });
 
 						// CUSTOM
 						// TODO: how to pass the parentObservation to the custom response
@@ -545,7 +589,7 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 						if (!CollectionUtils.isEmpty(customResponseAdvisors)) {
 							for (ResponseAdvisor advisor : customResponseAdvisors) {
-								advisedResponseFlux = advisor.adviseResponse(advisedResponseFlux,
+								streamAdvisedResponse = advisor.adviseResponse(streamAdvisedResponse,
 										advisedRequest.adviseContext());
 							}
 						}
@@ -556,12 +600,9 @@ public class DefaultChatClient implements ChatClient {
 							.toList();
 
 						if (!CollectionUtils.isEmpty(aggregateResponseAdvisors)) {
-							advisedResponseFlux = new MessageAggregator().aggregate(advisedResponseFlux,
+							streamAdvisedResponse = new MessageAggregator().aggregate(streamAdvisedResponse,
 									chatResponse -> {
-										AdvisedResponse advisedResponse = AdvisedResponse.builder()
-											.withResponse(chatResponse)
-											.withAdviseContext(advisorContext)
-											.build();
+										AdvisedResponse advisedResponse = AdvisedResponse(chatResponse, advisorContext);
 										for (ResponseAdvisor advisor : aggregateResponseAdvisors) {
 											AdvisorObservableHelper.adviseResponse(parentObservation, advisor,
 													advisedResponse);
@@ -570,7 +611,7 @@ public class DefaultChatClient implements ChatClient {
 						}
 					}
 
-					return advisedResponseFlux;
+					return streamAdvisedResponse.responses();
 
 				});
 		}
@@ -733,8 +774,9 @@ public class DefaultChatClient implements ChatClient {
 						 return StreamAroundAdvisor.class.getSimpleName();
 					 }
 					 @Override
-					 public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
-						 return chatModel.stream(toPrompt(advisedRequest));
+					 public StreamAdvisedResponse aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
+						 Flux<ChatResponse> chatResponses = chatModel.stream(toPrompt(advisedRequest));
+						 return new StreamAdvisedResponse(chatResponses, advisedRequest.adviseContext());
 					 }
 				 })
 				 .pushAll(this.advisors)

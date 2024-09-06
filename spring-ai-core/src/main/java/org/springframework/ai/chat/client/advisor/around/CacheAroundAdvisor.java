@@ -24,6 +24,7 @@ import org.springframework.ai.chat.client.AdvisedRequest;
 import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
+import org.springframework.ai.chat.client.advisor.api.StreamAdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.StreamAroundAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -75,14 +76,14 @@ public class CacheAroundAdvisor implements CallAroundAdvisor, StreamAroundAdviso
 	}
 
 	@Override
-	public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
+	public StreamAdvisedResponse aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
 		var cachedResponseOption = getCacheEntry(advisedRequest);
 		if (cachedResponseOption.isPresent()) {
-			return Flux.just(cachedResponseOption.get());
+			return new StreamAdvisedResponse(Flux.just(cachedResponseOption.get()), advisedRequest.adviseContext());
 		}
 
-		Flux<ChatResponse> fluxChatResponse = chain.nextAroundStream(advisedRequest);
+		StreamAdvisedResponse fluxChatResponse = chain.nextAroundStream(advisedRequest);
 
 		return new MessageAggregator().aggregate(fluxChatResponse, chatResponse -> {
 			saveCacheEntry(advisedRequest.userText(), chatResponse);

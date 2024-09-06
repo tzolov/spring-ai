@@ -16,14 +16,10 @@
 
 package org.springframework.ai.chat.client.advisor.api;
 
-import java.util.Map;
-
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-
-import reactor.core.publisher.Flux;
 
 /**
  * Advisor called after the {@link ChatModel#call(Prompt)} (or
@@ -82,12 +78,9 @@ public interface ResponseAdvisor extends Advisor {
 	 * @param fluxResponse the streaming {@link ChatResponse} data to be advised.
 	 * Represents the row {@link ChatResponse} stream data after the
 	 * {@link ChatModel#stream(Prompt)} method is called.
-	 * @param adviseContext the shared data between the advisors in the chain. It is
-	 * shared between all request and response advising points of all advisors in the
-	 * chain.
 	 * @return the advised {@link ChatResponse} flux.
 	 */
-	default Flux<ChatResponse> adviseResponse(Flux<ChatResponse> fluxResponse, Map<String, Object> adviseContext) {
+	default StreamAdvisedResponse adviseResponse(StreamAdvisedResponse fluxResponse) {
 		return fluxResponse;
 	}
 

@@ -9,6 +9,7 @@ import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
+import org.springframework.ai.chat.client.advisor.api.StreamAdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.StreamAroundAdvisor;
 import org.springframework.ai.chat.client.advisor.observation.AdvisorObservableHelper;
 import org.springframework.ai.chat.client.advisor.observation.AdvisorObservationContext;
@@ -93,32 +94,43 @@ public class DefaultAroundAdvisorChain implements AroundAdvisorChain {
 	}
 
 	@Override
-	public Flux<ChatResponse> nextAroundStream(AdvisedRequest advisedRequest) {
+	public StreamAdvisedResponse nextAroundStream(AdvisedRequest advisedRequest) {
 
-		return Flux.deferContextual(contextView -> {
+		if (this.streamAroundAdvisors.isEmpty()) {
+			Flux<ChatResponse> responses = Flux
+				.<ChatResponse>error(new IllegalStateException("No AroundAdvisor available to execute"));
+			return new StreamAdvisedResponse(responses, advisedRequest.adviseContext());
+		}
 
-			if (this.streamAroundAdvisors.isEmpty()) {
-				return Flux.error(new IllegalStateException("No AroundAdvisor available to execute"));
-			}
+		var advisor = this.streamAroundAdvisors.pop();
 
-			var advisor = this.streamAroundAdvisors.pop();
+		StreamAdvisedResponse streamAdvisedResponse = advisor.aroundStream(advisedRequest, this);
 
-			AdvisorObservationContext observationContext = AdvisorObservationContext.builder()
-				.withAdvisorName(advisor.getName())
-				.withAdvisorType(AdvisorObservationContext.Type.AROUND)
-				.withAdvisedRequest(advisedRequest)
-				.withAdvisorRequestContext(advisedRequest.adviseContext())
-				.build();
+		return streamAdvisedResponse.transform(chatResponses -> {
+			return chatResponses.transformDeferredContextual((originalChatResponses, contextView) -> {
 
-			var observation = AdvisorObservationDocumentation.AI_ADVISOR.observation(null,
-					AdvisorObservableHelper.DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
-					this.observationRegistry);
+				AdvisorObservationContext observationContext = AdvisorObservationContext.builder()
+					.withAdvisorName(advisor.getName())
+					.withAdvisorType(AdvisorObservationContext.Type.AROUND)
+					.withAdvisedRequest(advisedRequest)
+					.withAdvisorRequestContext(advisedRequest.adviseContext())
+					.build();
 
-			observation.parentObservation(contextView.getOrDefault(ObservationThreadLocalAccessor.KEY, null)).start();
+				var observation = AdvisorObservationDocumentation.AI_ADVISOR.observation(null,
+						AdvisorObservableHelper.DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
+						this.observationRegistry);
 
-			return advisor.aroundStream(advisedRequest, this).doOnError(observation::error).doFinally(s -> {
-				observation.stop();
-			}).contextWrite(ctx -> ctx.put(ObservationThreadLocalAccessor.KEY, observation));
+				observation.parentObservation(contextView.getOrDefault(ObservationThreadLocalAccessor.KEY, null))
+					.start();
+
+				// @formatter:off
+				return originalChatResponses
+						.doOnError(observation::error)
+						.doFinally(s -> {
+							observation.stop();
+						});
+				// @formatter:on
+			});
 		});
 	}
 

@@ -1,11 +1,13 @@
 package org.springframework.ai.chat.client.advisor.around;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.ai.chat.client.AdvisedRequest;
 import org.springframework.ai.chat.client.advisor.api.AdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.AroundAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.CallAroundAdvisor;
+import org.springframework.ai.chat.client.advisor.api.StreamAdvisedResponse;
 import org.springframework.ai.chat.client.advisor.api.StreamAroundAdvisor;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.util.CollectionUtils;
@@ -44,14 +46,16 @@ public class SafeGuardAroundAdvisor implements CallAroundAdvisor, StreamAroundAd
 	}
 
 	@Override
-	public Flux<ChatResponse> aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
+	public StreamAdvisedResponse aroundStream(AdvisedRequest advisedRequest, AroundAdvisorChain chain) {
 
 		if (!CollectionUtils.isEmpty(this.sensitiveWords)
 				&& sensitiveWords.stream().anyMatch(w -> advisedRequest.userText().contains(w))) {
-			return Flux.empty();
+			return new StreamAdvisedResponse(Flux.empty(), advisedRequest.adviseContext());
 		}
 
-		return chain.nextAroundStream(advisedRequest);
+		StreamAdvisedResponse response = chain.nextAroundStream(advisedRequest);
+
+		return response;
 
 	}
 
