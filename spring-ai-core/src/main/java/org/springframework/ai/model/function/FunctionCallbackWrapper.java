@@ -21,12 +21,14 @@ import java.util.function.Function;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.model.function.FunctionCallbackContext.SchemaType;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.util.Assert;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+// import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 
 /**
  * Note that the underlying function is responsible for converting the output into format
@@ -90,10 +92,15 @@ public class FunctionCallbackWrapper<I, O> extends AbstractFunctionCallback<I, O
 
 		private String inputTypeSchema;
 
-		private ObjectMapper objectMapper = new ObjectMapper()
-			.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-			.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
-			.registerModule(new JavaTimeModule());
+		private ObjectMapper objectMapper = new Jackson2ObjectMapperBuilder().modules(new JavaTimeModule())
+			.featuresToDisable(SerializationFeature.FAIL_ON_EMPTY_BEANS,
+					DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+			.build();
+
+		// private ObjectMapper objectMapper = new ObjectMapper()
+		// .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+		// .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+		// .registerModule(new JavaTimeModule());
 
 		public Builder<I, O> withName(String name) {
 			Assert.hasText(name, "Name must not be empty");
