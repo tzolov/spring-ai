@@ -131,7 +131,7 @@ public class MpcServerAutoConfiguration {
 			ObjectProvider<List<SyncToolRegistration>> tools,
 			ObjectProvider<List<McpServerFeatures.SyncResourceRegistration>> resources,
 			ObjectProvider<List<McpServerFeatures.SyncPromptRegistration>> prompts,
-			ObjectProvider<List<Consumer<List<McpSchema.Root>>>> rootsChangeConsumers) {
+			ObjectProvider<Consumer<List<McpSchema.Root>>> rootsChangeConsumers) {
 
 		McpSchema.Implementation serverInfo = new Implementation(serverProperties.getName(),
 				serverProperties.getVersion());
@@ -160,9 +160,9 @@ public class MpcServerAutoConfiguration {
 					+ serverProperties.isPromptChangeNotification());
 		});
 
-		rootsChangeConsumers.ifAvailable(consumers -> {
-			serverBilder.rootsChangeConsumers(consumers);
-			logger.info("Registered roots change consumers: " + consumers.size());
+		rootsChangeConsumers.ifAvailable(consumer -> {
+			serverBilder.rootsChangeConsumer(consumer);
+			logger.info("Registered roots change consumer");
 		});
 
 		serverBilder.capabilities(capabilitiesBuilder.build());
@@ -183,7 +183,7 @@ public class MpcServerAutoConfiguration {
 			ObjectProvider<List<AsyncToolRegistration>> tools,
 			ObjectProvider<List<McpServerFeatures.AsyncResourceRegistration>> resources,
 			ObjectProvider<List<McpServerFeatures.AsyncPromptRegistration>> prompts,
-			ObjectProvider<List<Consumer<List<McpSchema.Root>>>> rootsChangeConsumers) {
+			ObjectProvider<Consumer<List<McpSchema.Root>>> rootsChangeConsumer) {
 
 		McpSchema.Implementation serverInfo = new Implementation(serverProperties.getName(),
 				serverProperties.getVersion());
@@ -212,15 +212,13 @@ public class MpcServerAutoConfiguration {
 					+ serverProperties.isPromptChangeNotification());
 		});
 
-		rootsChangeConsumers.ifAvailable(consumers -> {
-			List<Function<List<McpSchema.Root>, Mono<Void>>> asyncConsumers = consumers
-				.stream().<Function<List<McpSchema.Root>, Mono<Void>>>map(consumer -> roots -> {
-					consumer.accept(roots);
-					return Mono.empty();
-				})
-				.toList();
-			serverBilder.rootsChangeConsumers(asyncConsumers);
-			logger.info("Registered roots change consumers: " + consumers.size());
+		rootsChangeConsumer.ifAvailable(consumer -> {
+			Function<List<McpSchema.Root>, Mono<Void>> asyncConsumer = roots -> {
+				consumer.accept(roots);
+				return Mono.empty();
+			};
+			serverBilder.rootsChangeConsumer(asyncConsumer);
+			logger.info("Registered roots change consumer");
 		});
 
 		serverBilder.capabilities(capabilitiesBuilder.build());

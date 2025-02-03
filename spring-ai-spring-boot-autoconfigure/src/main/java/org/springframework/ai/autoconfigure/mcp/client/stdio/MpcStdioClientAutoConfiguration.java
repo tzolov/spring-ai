@@ -98,20 +98,20 @@ public class MpcStdioClientAutoConfiguration {
 	 * </ul>
 	 * @param roots Root configurations provider
 	 * @param samplingHandler Sampling handler provider
-	 * @param toolsChangeConsumers Tools change consumers provider
-	 * @param resourcesChangeConsumers Resources change consumers provider
-	 * @param promptsChangeConsumers Prompts change consumers provider
-	 * @param loggingConsumers Logging consumers provider
+	 * @param toolsChangeConsumer Tools change consumer
+	 * @param resourcesChangeConsumer Resources change consumer
+	 * @param promptsChangeConsumers Prompts change consumer
+	 * @param loggingConsumer Logging consumer
 	 * @param clientProperties Client configuration properties
 	 * @return List of configured {@link McpSyncClient} instances
 	 */
 	@Bean
-	public List<McpSyncClient> mcpSyncClients(ObjectProvider<Map<String, Root>> roots,
+	public List<McpSyncClient> mcpSyncClients(ObjectProvider<List<Root>> roots,
 			ObjectProvider<Function<CreateMessageRequest, CreateMessageResult>> samplingHandler,
-			ObjectProvider<List<Consumer<List<McpSchema.Tool>>>> toolsChangeConsumers,
-			ObjectProvider<List<Consumer<List<McpSchema.Resource>>>> resourcesChangeConsumers,
-			ObjectProvider<List<Consumer<List<McpSchema.Prompt>>>> promptsChangeConsumers,
-			ObjectProvider<List<Consumer<McpSchema.LoggingMessageNotification>>> loggingConsumers,
+			ObjectProvider<Consumer<List<McpSchema.Tool>>> toolsChangeConsumer,
+			ObjectProvider<Consumer<List<McpSchema.Resource>>> resourcesChangeConsumer,
+			ObjectProvider<Consumer<List<McpSchema.Prompt>>> promptsChangeConsumer,
+			ObjectProvider<Consumer<McpSchema.LoggingMessageNotification>> loggingConsumer,
 			McpStdioClientProperties clientProperties) {
 
 		List<McpSyncClient> clients = new ArrayList<>();
@@ -130,9 +130,9 @@ public class MpcStdioClientAutoConfiguration {
 				.requestTimeout(clientProperties.getRequestTimeout());
 
 			roots.ifAvailable(rootEntries -> {
-				rootEntries.values().stream().forEach(clientBilder::roots);
+				clientBilder.roots(rootEntries);
 				capabilitiesBuilder.roots(clientProperties.isRootChangeNotification());
-				logger.info("Registered roots: " + rootEntries.keySet().toString());
+				logger.info("Registered roots: " + rootEntries.toString());
 			});
 
 			samplingHandler.ifAvailable(handler -> {
@@ -141,25 +141,10 @@ public class MpcStdioClientAutoConfiguration {
 				logger.info("Registered sampling handler");
 			});
 
-			toolsChangeConsumers.ifAvailable(consumers -> {
-				consumers.stream().forEach(clientBilder::toolsChangeConsumer);
-				logger.info("Registered tools change consumers: " + consumers.size());
-			});
-
-			resourcesChangeConsumers.ifAvailable(consumers -> {
-				consumers.stream().forEach(clientBilder::resourcesChangeConsumer);
-				logger.info("Registered resources change consumers: " + consumers.size());
-			});
-
-			promptsChangeConsumers.ifAvailable(consumers -> {
-				consumers.stream().forEach(clientBilder::promptsChangeConsumer);
-				logger.info("Registered prompts change consumers: " + consumers.size());
-			});
-
-			loggingConsumers.ifAvailable(consumers -> {
-				consumers.stream().forEach(clientBilder::loggingConsumer);
-				logger.info("Registered logging consumers: " + consumers.size());
-			});
+			toolsChangeConsumer.ifAvailable(clientBilder::toolsChangeConsumer);
+			resourcesChangeConsumer.ifAvailable(clientBilder::resourcesChangeConsumer);
+			promptsChangeConsumer.ifAvailable(clientBilder::promptsChangeConsumer);
+			loggingConsumer.ifAvailable(clientBilder::loggingConsumer);
 
 			clientBilder.loggingConsumer(loggingNotification -> {
 				logger.debug("Received logging notification: " + loggingNotification);
