@@ -112,4 +112,8 @@ public class McpToolCallback implements ToolCallback {
 		return ModelOptionsUtils.toJsonString(response.content());
 	}
 
+	public void close() {
+		this.mcpClient.close();
+	}
+
 }

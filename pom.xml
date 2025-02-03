@@ -126,7 +126,8 @@
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-watsonx-ai</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-zhipuai</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-moonshot</module>
-		<module>spring-ai-spring-boot-starters/spring-ai-starter-mcp-server</module>
+
+		<module>spring-ai-spring-boot-starters/spring-ai-starter-mcp</module>
 
 		<module>spring-ai-integration-tests</module>
 
@@ -852,10 +853,21 @@
 
 	<repositories>
 		<repository>
+			<name>Central Portal Snapshots</name>
+			<id>central-portal-snapshots</id>
+			<url>https://central.sonatype.com/repository/maven-snapshots/</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+		<repository>
 			<id>maven-central</id>
 			<url>https://repo.maven.apache.org/maven2/</url>
 			<snapshots>
-				<enabled>false</enabled>
+				<enabled>true</enabled>
 			</snapshots>
 			<releases>
 				<enabled>true</enabled>

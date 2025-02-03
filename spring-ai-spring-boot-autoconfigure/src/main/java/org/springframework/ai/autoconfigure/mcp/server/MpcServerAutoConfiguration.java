@@ -97,8 +97,7 @@ import org.springframework.core.log.LogAccessor;
 @AutoConfiguration
 @ConditionalOnClass({ McpSchema.class, McpSyncServer.class })
 @EnableConfigurationProperties(McpServerProperties.class)
-@ConditionalOnProperty(prefix = McpServerProperties.CONFIG_PREFIX, name = "enabled", havingValue = "true",
-		matchIfMissing = true)
+@ConditionalOnProperty(prefix = McpServerProperties.CONFIG_PREFIX, name = "enabled", havingValue = "true")
 public class MpcServerAutoConfiguration {
 
 	private static final LogAccessor logger = new LogAccessor(MpcServerAutoConfiguration.class);

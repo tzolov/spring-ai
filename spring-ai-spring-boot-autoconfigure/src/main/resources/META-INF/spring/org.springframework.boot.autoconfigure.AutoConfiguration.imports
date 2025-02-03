@@ -63,3 +63,8 @@ org.springframework.ai.autoconfigure.vectorstore.observation.VectorStoreObservat
 org.springframework.ai.autoconfigure.mcp.server.MpcServerAutoConfiguration
 org.springframework.ai.autoconfigure.mcp.server.MpcWebMvcServerAutoConfiguration
 org.springframework.ai.autoconfigure.mcp.server.MpcWebFluxServerAutoConfiguration
+org.springframework.ai.autoconfigure.mcp.client.MpcClientAutoConfiguration
+org.springframework.ai.autoconfigure.mcp.client.HttpClientSseClientAutoConfiguration
+org.springframework.ai.autoconfigure.mcp.client.MpcWebFluxSseClientAutoConfiguration
+org.springframework.ai.autoconfigure.mcp.client.stdio.MpcStdioClientAutoConfiguration
+

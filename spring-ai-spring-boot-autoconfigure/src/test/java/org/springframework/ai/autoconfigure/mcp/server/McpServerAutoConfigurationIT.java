@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class McpServerAutoConfigurationIT {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+		.withPropertyValues("spring.ai.mcp.server.enabled=true")
 		.withConfiguration(AutoConfigurations.of(MpcServerAutoConfiguration.class));
 
 	@Test

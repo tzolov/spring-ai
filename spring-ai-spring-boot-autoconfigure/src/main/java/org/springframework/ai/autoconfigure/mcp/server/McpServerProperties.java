@@ -46,7 +46,7 @@ public class McpServerProperties {
 	 * <p>
 	 * When set to false, the MCP server and all its components will not be initialized.
 	 */
-	private boolean enabled = true;
+	private boolean enabled = false;
 
 	/**
 	 * The name of the MCP server instance.
