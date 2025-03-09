@@ -15,12 +15,16 @@
  */
 package org.springframework.ai.mcp;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.util.Assert;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -109,21 +113,32 @@ public class AsyncMcpToolCallbackProvider implements ToolCallbackProvider {
 	@Override
 	public ToolCallback[] getToolCallbacks() {
 
-		List<ToolCallback> toolCallbackList = new ArrayList<>();
+		CountDownLatch latch = new CountDownLatch(1);
+		CopyOnWriteArrayList<ToolCallback> toolCallbackList = new CopyOnWriteArrayList<>();
+		AtomicReference<Throwable> errorRef = new AtomicReference<>();
 
-		for (McpAsyncClient mcpClient : this.mcpClients) {
+		this.asyncToolCallbacks(this.mcpClients).subscribe(toolCallback -> {
+			toolCallbackList.add(toolCallback);
+		}, error -> {
+			errorRef.set(error);
+			latch.countDown();
+		}, () -> {
+			latch.countDown();
+		});
 
-			ToolCallback[] toolCallbacks = mcpClient.listTools()
-				.map(response -> response.tools()
-					.stream()
-					.map(tool -> new AsyncMcpToolCallback(mcpClient, tool))
-					.toArray(ToolCallback[]::new))
-				.block();
-
-			validateToolCallbacks(toolCallbacks);
-
-			toolCallbackList.addAll(List.of(toolCallbacks));
+		try {
+			latch.await();
+			if (errorRef.get() != null) {
+				throw (errorRef.get() instanceof RuntimeException runtimeException) ? runtimeException
+						: new RuntimeException("Error during tool execution", errorRef.get());
+			}
 		}
+		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new RuntimeException("Tool execution was interrupted", e);
+		}
+
+		validateToolCallbacks(toolCallbackList.toArray(new ToolCallback[0]));
 
 		return toolCallbackList.toArray(new ToolCallback[0]);
 	}
@@ -163,12 +178,20 @@ public class AsyncMcpToolCallbackProvider implements ToolCallbackProvider {
 	 * @param mcpClients the list of MCP clients to create callbacks from
 	 * @return a Flux of tool callbacks from all provided clients
 	 */
-	public static Flux<ToolCallback> asyncToolCallbacks(List<McpAsyncClient> mcpClients) {
+	private Flux<ToolCallback> asyncToolCallbacks(List<McpAsyncClient> mcpClients) {
 		if (CollectionUtils.isEmpty(mcpClients)) {
 			return Flux.empty();
 		}
 
-		return Flux.fromArray(new AsyncMcpToolCallbackProvider(mcpClients).getToolCallbacks());
+		return Flux.fromIterable(mcpClients).flatMap(mcpClient -> {
+			// Check if client is initialized and initialize if needed
+			Mono<McpAsyncClient> clientMono = mcpClient.isInitialized() ? Mono.just(mcpClient)
+					: mcpClient.initialize().thenReturn(mcpClient);
+
+			return clientMono.flatMap(client -> client.listTools())
+				.flatMapIterable(response -> response.tools())
+				.map(tool -> new AsyncMcpToolCallback(mcpClient, tool));
+		});
 	}
 
 }

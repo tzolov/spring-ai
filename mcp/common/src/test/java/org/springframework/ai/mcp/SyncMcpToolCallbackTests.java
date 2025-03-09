@@ -41,33 +41,29 @@ class SyncMcpToolCallbackTests {
 
 	@Test
 	void getToolDefinitionShouldReturnCorrectDefinition() {
-		// Arrange
+
 		when(tool.name()).thenReturn("testTool");
 		when(tool.description()).thenReturn("Test tool description");
 
 		SyncMcpToolCallback callback = new SyncMcpToolCallback(mcpClient, tool);
 
-		// Act
 		var toolDefinition = callback.getToolDefinition();
 
-		// Assert
 		assertThat(toolDefinition.name()).isEqualTo("testTool");
 		assertThat(toolDefinition.description()).isEqualTo("Test tool description");
 	}
 
 	@Test
 	void callShouldHandleJsonInputAndOutput() {
-		// Arrange
+
 		when(tool.name()).thenReturn("testTool");
 		CallToolResult callResult = mock(CallToolResult.class);
 		when(mcpClient.callTool(any(CallToolRequest.class))).thenReturn(callResult);
 
 		SyncMcpToolCallback callback = new SyncMcpToolCallback(mcpClient, tool);
 
-		// Act
 		String response = callback.call("{\"param\":\"value\"}");
 
-		// Assert
 		assertThat(response).isNotNull();
 	}
 

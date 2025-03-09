@@ -100,6 +100,9 @@ public class SyncMcpToolCallbackProvider implements ToolCallbackProvider {
 		var toolCallbacks = new ArrayList<>();
 
 		mcpClients.stream().forEach(mcpClient -> {
+
+			mcpClient.initialize(); // TODO need to have isInitialized() method
+
 			toolCallbacks.addAll(mcpClient.listTools()
 				.tools()
 				.stream()
