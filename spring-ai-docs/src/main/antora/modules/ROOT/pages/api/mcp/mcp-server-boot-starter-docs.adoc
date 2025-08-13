@@ -12,15 +12,11 @@ The MCP Server Boot Starter offers:
 
 == Starters
 
-[NOTE]
-====
-There has been a significant change in the Spring AI auto-configuration, starter modules' artifact names.
-Please refer to the https://docs.spring.io/spring-ai/reference/upgrade-notes.html[upgrade notes] for more information.
-====
+Choose one of the following starters based on your transport and feature requirements:
 
-Choose one of the following starters based on your transport requirements:
+== STDIO and SSE MCP Servers
 
-=== Standard MCP Server
+=== STDIO MCP Server
 
 Full MCP Server features support with `STDIO` server transport.
 
@@ -42,7 +38,7 @@ The starter activates the `McpServerAutoConfiguration` auto-configuration respon
 * Managing server capabilities and change notifications
 * Providing both sync and async server implementations
 
-=== WebMVC Server Transport
+=== SSE WebMVC Server Transport
 
 Full MCP Server features support with `SSE` (Server-Sent Events) server transport based on Spring MVC and an optional `STDIO` transport.
 
@@ -61,7 +57,7 @@ The starter activates the `McpWebMvcServerAutoConfiguration` and `McpServerAutoC
 * Optional `STDIO` transport (enabled by setting `spring.ai.mcp.server.stdio=true`)
 * Included `spring-boot-starter-web` and `mcp-spring-webmvc` dependencies
 
-=== WebFlux Server Transport
+=== SSE WebFlux Server Transport
 
 Full MCP Server features support with `SSE` (Server-Sent Events) server transport based on Spring WebFlux and an optional `STDIO` transport.
 
@@ -85,7 +81,7 @@ The starter activates the `McpWebFluxServerAutoConfiguration` and `McpServerAuto
 Due to Spring Boot's default behavior, when both `org.springframework.web.servlet.DispatcherServlet` and `org.springframework.web.reactive.DispatcherHandler` are present on the classpath, Spring Boot will prioritize `DispatcherServlet`. As a result, if your project uses `spring-boot-starter-web`, it is recommended to use `spring-ai-starter-mcp-server-webmvc` instead of `spring-ai-starter-mcp-server-webflux`.
 ====
 
-Configuration Properties
+=== STDIO and SSE Server Configuration Properties
 
 All properties are prefixed with `spring.ai.mcp.server`:
 
@@ -112,6 +108,127 @@ All properties are prefixed with `spring.ai.mcp.server`:
 |`request-timeout` | Duration to wait for server responses before timing out requests. Applies to all requests made through the client, including tool calls, resource access, and prompt operations. | `20` seconds
 |===
 
+== Streamable-HTTP MCP Servers
+
+Streamable-HTTP MCP servers provide enhanced functionality with support for change notifications and persistent connections. 
+These servers are ideal for applications that need to notify clients about dynamic changes to tools, resources, or prompts.
+
+=== Streamable-HTTP WebMVC Server
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-mcp-server-streamable-webmvc</artifactId>
+</dependency>
+----
+
+Features:
+* Full MCP server capabilities with Spring MVC Streamable transport
+* Change notifications for tools, resources, and prompts
+* Persistent connection management
+* Root change handling support
+
+=== Streamable-HTTP WebFlux Server
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-mcp-server-streamable-webflux</artifactId>
+</dependency>
+----
+
+Features:
+* Reactive MCP server with WebFlux Streamable transport
+* Change notifications for tools, resources, and prompts
+* Non-blocking persistent connections
+* Root change handling support
+
+=== Streamable-HTTP Server Configuration Properties
+
+All properties are prefixed with `spring.ai.mcp.server.streamable`:
+
+[options="header"]
+|===
+|Property |Description |Default
+|`enabled` |Enable/disable the streamable MCP server |`true`
+|`name` |Server name for identification |`mcp-server`
+|`version` |Server version |`1.0.0`
+|`instructions` |Optional instructions for client interaction |`null`
+|`type` |Server type (SYNC/ASYNC) |`SYNC`
+|`capabilities.resource` |Enable/disable resource capabilities |`true`
+|`capabilities.tool` |Enable/disable tool capabilities |`true`
+|`capabilities.prompt` |Enable/disable prompt capabilities |`true`
+|`capabilities.completion` |Enable/disable completion capabilities |`true`
+|`resource-change-notification` |Enable resource change notifications |`true`
+|`prompt-change-notification` |Enable prompt change notifications |`true`
+|`tool-change-notification` |Enable tool change notifications |`true`
+|`tool-response-mime-type` |Response MIME type per tool name |`-`
+|`mcp-endpoint` |Custom MCP endpoint path |`/mcp`
+|`request-timeout` |Request timeout duration |`20` seconds
+|`keep-alive-interval` |Connection keep-alive interval |`null` - disabled
+|===
+
+== Stateless MCP Servers
+
+Stateless MCP servers are designed for simplified deployments where session state is not maintained between requests. 
+These servers are ideal for microservices architectures and cloud-native deployments.
+
+=== Stateless WebMVC Server
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-mcp-server-stateless-webmvc</artifactId>
+</dependency>
+----
+
+Features:
+* Stateless operation with Spring MVC transport
+* No session state management
+* Simplified deployment model
+* Optimized for cloud-native environments
+
+=== Stateless WebFlux Server
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-mcp-server-stateless-webflux</artifactId>
+</dependency>
+----
+
+Features:
+* Reactive stateless operation with WebFlux transport
+* No session state management
+* Non-blocking request processing
+* Optimized for high-throughput scenarios
+
+=== Stateless Server Configuration Properties
+
+All properties are prefixed with `spring.ai.mcp.server.stateless`:
+
+[options="header"]
+|===
+|Property |Description |Default
+|`enabled` |Enable/disable the stateless MCP server |`true`
+|`name` |Server name for identification |`mcp-server`
+|`version` |Server version |`1.0.0`
+|`instructions` |Optional instructions for client interaction |`null`
+|`type` |Server type (SYNC/ASYNC) |`SYNC`
+|`capabilities.resource` |Enable/disable resource capabilities |`true`
+|`capabilities.tool` |Enable/disable tool capabilities |`true`
+|`capabilities.prompt` |Enable/disable prompt capabilities |`true`
+|`capabilities.completion` |Enable/disable completion capabilities |`true`
+|`tool-response-mime-type` |Response MIME type per tool name |`-`
+|`mcp-endpoint` |Custom MCP endpoint path |`/mcp`
+|`request-timeout` |Request timeout duration |`20` seconds
+|`disallow-delete` |Disallow delete operations |`false`
+|===
+
 == Sync/Async Server Types
 
 * **Synchronous Server** - The default server type implemented using `McpSyncServer`.
@@ -136,11 +253,15 @@ All capabilities are enabled by default. Disabling a capability will prevent the
 
 == Transport Options
 
-The MCP Server supports three transport mechanisms, each with its dedicated starter:
+The MCP Server supports multiple transport mechanisms, each with its dedicated starter:
 
 * Standard Input/Output (STDIO) - `spring-ai-starter-mcp-server`
 * Spring MVC (Server-Sent Events) - `spring-ai-starter-mcp-server-webmvc`
 * Spring WebFlux (Reactive SSE) - `spring-ai-starter-mcp-server-webflux`
+* Streamable Spring MVC - `spring-ai-starter-mcp-server-streamable-webmvc`
+* Streamable Spring WebFlux - `spring-ai-starter-mcp-server-streamable-webflux`
+* Stateless Spring MVC - `spring-ai-starter-mcp-server-stateless-webmvc`
+* Stateless Spring WebFlux - `spring-ai-starter-mcp-server-stateless-webflux`
 
 == Features and Capabilities
 
@@ -174,14 +295,28 @@ public List<McpServerFeatures.SyncToolSpecification> myTools(...) {
 }
 ----
 
+or for `Stateless` Servers:
+
+[source,java]
+----
+@Bean
+public List<McpStatelessServerFeatures.SyncToolSpecification> myTools(...) {
+    List<McpStatelessServerFeatures.SyncToolSpecification> tools = ...
+    return tools;
+}
+----
+
 The auto-configuration will automatically detect and register all tool callbacks from:
-* Individual `ToolCallback` beans
-* Lists of `ToolCallback` beans
-* `ToolCallbackProvider` beans
+
+- Individual `ToolCallback` beans
+- Lists of `ToolCallback` beans
+- `ToolCallbackProvider` beans
 
 Tools are de-duplicated by name, with the first occurrence of each tool name being used.
 
 ==== Tool Context Support
+
+NOTE: Not applicable for Stateless servers.
 
 The xref:api/tools.adoc#_tool_context[ToolContext] is supported, allowing contextual information to be passed to tool calls. It contains an `McpSyncServerExchange` instance under the `exchange` key, accessible via `McpToolUtils.getMcpExchange(toolContext)`. See this https://github.com/spring-projects/spring-ai-examples/blob/3fab8483b8deddc241b1e16b8b049616604b7767/model-context-protocol/sampling/mcp-weather-webmvc-server/src/main/java/org/springframework/ai/mcp/sample/server/WeatherService.java#L59-L126[example] demonstrating `exchange.loggingNotification(...)` and `exchange.createMessage(...)`.
 
@@ -216,6 +351,8 @@ public List<McpServerFeatures.SyncResourceSpecification> myResources(...) {
 }
 ----
 
+TIP: For Stateless servers use the `McpStatelessServerFeatures.SyncResourceSpecification` (or `McpStatelessServerFeatures.AsyncResourceSpecification`) class instead. Instead of `exchange` the handler will be provided with `context` of type `McpTransportContext`.
+
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/[Prompt Management]
 
 Provides a standardized way for servers to expose prompt templates to clients.
@@ -243,6 +380,8 @@ public List<McpServerFeatures.SyncPromptSpecification> myPrompts() {
 }
 ----
 
+TIP: For Stateless servers use the `McpStatelessServerFeatures.SyncPromptSpecification` (or `McpStatelessServerFeatures.AsyncPromptSpecification`) class instead. Instead of `exchange` the handler will be provided with `context` of type `McpTransportContext`.
+
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/server/completions/[Completion Management]
 
 Provides a standardized way for servers to expose completion capabilities to clients.
@@ -269,6 +408,8 @@ public List<McpServerFeatures.SyncCompletionSpecification> myCompletions() {
     return List.of(completion);
 }
 ----
+
+TIP: For Stateless servers use the `McpStatelessServerFeatures.SyncCompletionSpecification` (or `McpStatelessServerFeatures.AsyncCompletionSpecification`) class instead. Instead of `exchange` the handler will be provided with `context` of type `McpTransportContext`.
 
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/client/roots/#root-list-changes[Root Change Consumers]
 
@@ -341,6 +482,40 @@ spring:
           resource: true
           prompt: true
           completion: true
+----
+
+=== Streamable Server Configuration
+[source,yaml]
+----
+# Using spring-ai-starter-mcp-server-streamable-webmvc
+spring:
+  ai:
+    mcp:
+      server:
+        streamable:
+          name: streamable-mcp-server
+          version: 1.0.0
+          type: SYNC
+          instructions: "This streamable server provides real-time notifications"
+          resource-change-notification: true
+          tool-change-notification: true
+          prompt-change-notification: true
+----
+
+=== Stateless Server Configuration
+[source,yaml]
+----
+# Using spring-ai-starter-mcp-server-stateless-webflux
+spring:
+  ai:
+    mcp:
+      server:
+        stateless:
+          name: stateless-mcp-server
+          version: 1.0.0
+          type: ASYNC
+          instructions: "This stateless server is optimized for cloud deployments"
+          mcp-endpoint: /api/mcp
 ----
 
 === Creating a Spring Boot Application with MCP Server
