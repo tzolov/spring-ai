@@ -106,6 +106,7 @@ All properties are prefixed with `spring.ai.mcp.server`:
 |`sse-endpoint` |Custom SSE endpoint path for web transport |`/sse`
 |`base-url` | Optional URL prefix. For example `base-url=/api/v1` means that the client should access the sse endpoint at `/api/v1` + `sse-endpoint` and the message endpoint is `/api/v1` + `sse-message-endpoint` | -
 |`request-timeout` | Duration to wait for server responses before timing out requests. Applies to all requests made through the client, including tool calls, resource access, and prompt operations. | `20` seconds
+|`keep-alive-interval` |Connection keep-alive interval |`null` - disabled
 |===
 
 == Streamable-HTTP MCP Servers
@@ -145,7 +146,7 @@ Features:
 * Non-blocking persistent connections
 * Root change handling support
 
-=== Streamable-HTTP Server Configuration Properties
+=== Streamable-HTTP Server (WebFlux and WebMVC) Configuration Properties
 
 All properties are prefixed with `spring.ai.mcp.server.streamable`:
 
@@ -174,6 +175,8 @@ All properties are prefixed with `spring.ai.mcp.server.streamable`:
 
 Stateless MCP servers are designed for simplified deployments where session state is not maintained between requests. 
 These servers are ideal for microservices architectures and cloud-native deployments.
+
+NOTE: Stateless servers doesn't support messages requests to the MCP client (e.g. elicitation, sampling, ping)
 
 === Stateless WebMVC Server
 
