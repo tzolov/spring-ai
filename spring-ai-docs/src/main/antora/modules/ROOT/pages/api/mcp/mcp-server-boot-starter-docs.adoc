@@ -89,6 +89,7 @@ All properties are prefixed with `spring.ai.mcp.server`:
 |===
 |Property |Description |Default
 |`enabled` |Enable/disable the MCP server |`true`
+|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
 |`stdio` |Enable/disable stdio transport |`false`
 |`name` |Server name for identification |`mcp-server`
 |`version` |Server version |`1.0.0`
@@ -154,6 +155,7 @@ All properties are prefixed with `spring.ai.mcp.server.streamable`:
 |===
 |Property |Description |Default
 |`enabled` |Enable/disable the streamable MCP server |`true`
+|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
 |`name` |Server name for identification |`mcp-server`
 |`version` |Server version |`1.0.0`
 |`instructions` |Optional instructions for client interaction |`null`
@@ -218,6 +220,7 @@ All properties are prefixed with `spring.ai.mcp.server.stateless`:
 |===
 |Property |Description |Default
 |`enabled` |Enable/disable the stateless MCP server |`true`
+|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
 |`name` |Server name for identification |`mcp-server`
 |`version` |Server version |`1.0.0`
 |`instructions` |Optional instructions for client interaction |`null`
@@ -316,6 +319,8 @@ The auto-configuration will automatically detect and register all tool callbacks
 - `ToolCallbackProvider` beans
 
 Tools are de-duplicated by name, with the first occurrence of each tool name being used.
+
+You can disable the automatically detect and register all tool callbacks by setting the `tool-callback-converter` to `false`.
 
 ==== Tool Context Support
 

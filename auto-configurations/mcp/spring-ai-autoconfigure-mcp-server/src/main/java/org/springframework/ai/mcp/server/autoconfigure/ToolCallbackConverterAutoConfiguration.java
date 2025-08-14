@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.mcp.server.streamable.autoconfigure;
+package org.springframework.ai.mcp.server.autoconfigure;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,18 +37,18 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 /**
  * @author Christian Tzolov
  */
-@EnableConfigurationProperties(McpStreamableServerProperties.class)
+@EnableConfigurationProperties(McpServerProperties.class)
 @Conditional(ToolCallbackConverterCondition.class)
 public class ToolCallbackConverterAutoConfiguration {
 
 	private static final LogAccessor logger = new LogAccessor(ToolCallbackConverterAutoConfiguration.class);
 
 	@Bean
-	@ConditionalOnProperty(prefix = McpStreamableServerProperties.CONFIG_PREFIX, name = "type", havingValue = "SYNC",
+	@ConditionalOnProperty(prefix = McpServerProperties.CONFIG_PREFIX, name = "type", havingValue = "SYNC",
 			matchIfMissing = true)
 	public List<McpServerFeatures.SyncToolSpecification> syncTools(ObjectProvider<List<ToolCallback>> toolCalls,
 			List<ToolCallback> toolCallbacksList, List<ToolCallbackProvider> toolCallbackProvider,
-			McpStreamableServerProperties serverProperties) {
+			McpServerProperties serverProperties) {
 
 		List<ToolCallback> tools = new ArrayList<>(toolCalls.stream().flatMap(List::stream).toList());
 
@@ -69,7 +69,7 @@ public class ToolCallbackConverterAutoConfiguration {
 	}
 
 	private List<McpServerFeatures.SyncToolSpecification> toSyncToolSpecifications(List<ToolCallback> tools,
-			McpStreamableServerProperties serverProperties) {
+			McpServerProperties serverProperties) {
 
 		// De-duplicate tools by their name, keeping the first occurrence of each tool
 		// name
@@ -92,10 +92,10 @@ public class ToolCallbackConverterAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnProperty(prefix = McpStreamableServerProperties.CONFIG_PREFIX, name = "type", havingValue = "ASYNC")
+	@ConditionalOnProperty(prefix = McpServerProperties.CONFIG_PREFIX, name = "type", havingValue = "ASYNC")
 	public List<McpServerFeatures.AsyncToolSpecification> asyncTools(ObjectProvider<List<ToolCallback>> toolCalls,
 			List<ToolCallback> toolCallbackList, List<ToolCallbackProvider> toolCallbackProvider,
-			McpStreamableServerProperties serverProperties) {
+			McpServerProperties serverProperties) {
 
 		List<ToolCallback> tools = new ArrayList<>(toolCalls.stream().flatMap(List::stream).toList());
 		if (!CollectionUtils.isEmpty(toolCallbackList)) {
@@ -115,7 +115,7 @@ public class ToolCallbackConverterAutoConfiguration {
 	}
 
 	private List<McpServerFeatures.AsyncToolSpecification> toAsyncToolSpecification(List<ToolCallback> tools,
-			McpStreamableServerProperties serverProperties) {
+			McpServerProperties serverProperties) {
 		// De-duplicate tools by their name, keeping the first occurrence of each tool
 		// name
 		return tools.stream() // Key: tool name
