@@ -1,8 +1,10 @@
 
 == Streamable-HTTP MCP Servers
 
-Streamable-HTTP MCP servers provide enhanced functionality with support for change notifications and persistent connections. 
-These servers are ideal for applications that need to notify clients about dynamic changes to tools, resources, or prompts.
+link:https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http[Streamable-HTTP] MCP servers provide enhanced functionality with support for change notifications and persistent connections. 
+These servers, introduced with spec version link:https://modelcontextprotocol.io/specification/2025-03-26[2025-03-26], are ideal for applications that need to notify clients about dynamic changes to tools, resources, or prompts.
+
+NOTE: They require xref:api/mcp/mcp-client-boot-starter-docs#_streamable_http_transport_properties[streamable-HTTP clients] to support the necessary protocols for handling these features.
 
 === Streamable-HTTP WebMVC Server
 
@@ -14,7 +16,6 @@ These servers are ideal for applications that need to notify clients about dynam
 </dependency>
 ----
 
-Features:
 * Full MCP server capabilities with Spring MVC Streamable transport
 * Change notifications for tools, resources, and prompts
 * Persistent connection management
@@ -30,7 +31,6 @@ Features:
 </dependency>
 ----
 
-Features:
 * Reactive MCP server with WebFlux Streamable transport
 * Change notifications for tools, resources, and prompts
 * Non-blocking persistent connections
@@ -44,7 +44,7 @@ All properties are prefixed with `spring.ai.mcp.server.streamable`:
 |===
 |Property |Description |Default
 |`enabled` |Enable/disable the streamable MCP server |`true`
-|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
+|`tool-callback-converter` |Enable/disable the conversion of Spring AI ToolCallbacks into MCP Tool specs |`true`
 |`name` |Server name for identification |`mcp-server`
 |`version` |Server version |`1.0.0`
 |`instructions` |Optional instructions for client interaction |`null`
@@ -58,8 +58,8 @@ All properties are prefixed with `spring.ai.mcp.server.streamable`:
 |`tool-change-notification` |Enable tool change notifications |`true`
 |`tool-response-mime-type` |Response MIME type per tool name |`-`
 |`mcp-endpoint` |Custom MCP endpoint path |`/mcp`
-|`request-timeout` |Request timeout duration |`20` seconds
-|`keep-alive-interval` |Connection keep-alive interval |`null` - disabled
+|`request-timeout` |Request timeout duration |`20 seconds`
+|`keep-alive-interval` |Connection keep-alive interval |`null` (disabled)
 |===
 
 == Features and Capabilities
@@ -74,13 +74,13 @@ The MCP Server supports four main capability types that can be individually enab
 All capabilities are enabled by default. Disabling a capability will prevent the server from registering and exposing the corresponding features to clients.
 
 The MCP Server Boot Starter allows servers to expose tools, resources, and prompts to clients.
-It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on server type:
+It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on the server type:
 
 === link:https://modelcontextprotocol.io/specification/2025-03-26/server/tools[Tools]
 Allows servers to expose tools that can be invoked by language models. The MCP Server Boot Starter provides:
 
 * Change notification support
-* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on server type
+* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on the server type
 * Automatic tool specification through Spring beans:
 
 [source,java]
@@ -111,7 +111,7 @@ The auto-configuration will automatically detect and register all tool callbacks
 
 Tools are de-duplicated by name, with the first occurrence of each tool name being used.
 
-You can disable the automatically detect and register all tool callbacks by setting the `tool-callback-converter` to `false`.
+TIP: You can disable the automatic detection and registration of all tool callbacks by setting the `tool-callback-converter` to `false`.
 
 ==== Tool Context Support
 
@@ -204,20 +204,20 @@ public List<McpServerFeatures.SyncCompletionSpecification> myCompletions() {
 
 === link:https://modelcontextprotocol.io/specification/2025-03-26/server/utilities/logging/[Logging Management]
 
-Provides a standardized way for servers to send structured log messages to clients. 
+Provides a standardized way for servers to send structured log messages to clients.
 
 TODO: add code snippet
 
 === link:https://modelcontextprotocol.io/specification/2025-03-26/basic/utilities/ping/[Ping]
 
-Ping mechanism for the server to verify that their clients are still alive
+Ping mechanism for the server to verify that its clients are still alive.
 
 TODO: add code snippet
 
 
 === link:https://modelcontextprotocol.io/specification/2025-03-26/client/roots#root-list-changes[Root Change Consumers]
 
-When roots change, clients that support `listChanged` send a Root Change notification.
+When roots change, clients that support `listChanged` send a root change notification.
 
 * Support for monitoring root changes
 * Automatic conversion to async consumers for reactive applications
@@ -235,7 +235,7 @@ public BiConsumer<McpSyncServerExchange, List<McpSchema.Root>> rootsChangeHandle
 
 == Usage Examples
 
-=== Streamable Http Server Configuration
+=== Streamable HTTP Server Configuration
 [source,yaml]
 ----
 # Using spring-ai-starter-mcp-server-streamable-webmvc
@@ -284,4 +284,4 @@ public class McpServerApplication {
 ----
 
 The auto-configuration will automatically register the tool callbacks as MCP tools.
-You can have multiple beans producing ToolCallbacks. The auto-configuration will merge them.
+You can have multiple beans producing ToolCallbacks, and the auto-configuration will merge them.

@@ -1,11 +1,11 @@
 
 == STDIO and SSE MCP Servers
 
-The STDIO and SSE MCP Servers support multiple transport mechanisms, each with its dedicated starter
+The STDIO and SSE MCP Servers support multiple transport mechanisms, each with its dedicated starter.
 
 === STDIO MCP Server
 
-Full MCP Server features support with `STDIO` server transport.
+Full MCP Server feature support with `STDIO` server transport.
 
 [source,xml]
 ----
@@ -17,17 +17,14 @@ Full MCP Server features support with `STDIO` server transport.
 
 * Suitable for command-line and desktop tools
 * No additional web dependencies required
-
-The starter activates the `McpServerAutoConfiguration` auto-configuration responsible for:
-
-* Configuring the basic server components
-* Handling tool, resource, and prompt specifications
-* Managing server capabilities and change notifications
-* Providing both sync and async server implementations
+* Configuration of basic server components
+* Handling of tool, resource, and prompt specifications
+* Management of server capabilities and change notifications
+* Support for both sync and async server implementations
 
 === SSE WebMVC Server
 
-Full MCP Server features support with `SSE` (Server-Sent Events) server transport based on Spring MVC and an optional `STDIO` transport.
+Full MCP Server feature support with `SSE` (Server-Sent Events) server transport based on Spring MVC and an optional `STDIO` transport.
 
 [source,xml]
 ----
@@ -37,16 +34,14 @@ Full MCP Server features support with `SSE` (Server-Sent Events) server transpor
 </dependency>
 ----
 
-The starter activates the `McpWebMvcServerAutoConfiguration` and `McpServerAutoConfiguration` auto-configurations to provide:
-
 * HTTP-based transport using Spring MVC (`WebMvcSseServerTransportProvider`)
 * Automatically configured SSE endpoints
 * Optional `STDIO` transport (enabled by setting `spring.ai.mcp.server.stdio=true`)
-* Included `spring-boot-starter-web` and `mcp-spring-webmvc` dependencies
+* Includes `spring-boot-starter-web` and `mcp-spring-webmvc` dependencies
 
 === SSE WebFlux Server
 
-Full MCP Server features support with `SSE` (Server-Sent Events) server transport based on Spring WebFlux and an optional `STDIO` transport.
+Full MCP Server feature support with `SSE` (Server-Sent Events) server transport based on Spring WebFlux and an optional `STDIO` transport.
 
 [source,xml]
 ----
@@ -61,7 +56,7 @@ The starter activates the `McpWebFluxServerAutoConfiguration` and `McpServerAuto
 * Reactive transport using Spring WebFlux (`WebFluxSseServerTransportProvider`)
 * Automatically configured reactive SSE endpoints
 * Optional `STDIO` transport (enabled by setting `spring.ai.mcp.server.stdio=true`)
-* Included `spring-boot-starter-webflux` and `mcp-spring-webflux` dependencies
+* Includes `spring-boot-starter-webflux` and `mcp-spring-webflux` dependencies
 
 [NOTE]
 ====
@@ -76,8 +71,8 @@ All properties are prefixed with `spring.ai.mcp.server`:
 |===
 |Property |Description |Default
 |`enabled` |Enable/disable the MCP server |`true`
-|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
-|`stdio` |Enable/disable stdio transport |`false`
+|`tool-callback-converter` |Enable/disable the conversion of Spring AI ToolCallbacks into MCP Tool specs |`true`
+|`stdio` |Enable/disable STDIO transport |`false`
 |`name` |Server name for identification |`mcp-server`
 |`version` |Server version |`1.0.0`
 |`instructions` |Optional instructions to provide guidance to the client on how to interact with this server |`null`
@@ -89,24 +84,24 @@ All properties are prefixed with `spring.ai.mcp.server`:
 |`resource-change-notification` |Enable resource change notifications |`true`
 |`prompt-change-notification` |Enable prompt change notifications |`true`
 |`tool-change-notification` |Enable tool change notifications |`true`
-|`tool-response-mime-type` |(optional) response MIME type per tool name. For example `spring.ai.mcp.server.tool-response-mime-type.generateImage=image/png` will associate the `image/png` mime type with the `generateImage()` tool name |`-`
-|`sse-message-endpoint` | Custom SSE Message endpoint path for web transport to be used by the client to send messages|`/mcp/message`
+|`tool-response-mime-type` |Optional response MIME type per tool name. For example, `spring.ai.mcp.server.tool-response-mime-type.generateImage=image/png` will associate the `image/png` MIME type with the `generateImage()` tool name |`-`
+|`sse-message-endpoint` |Custom SSE message endpoint path for web transport to be used by the client to send messages |`/mcp/message`
 |`sse-endpoint` |Custom SSE endpoint path for web transport |`/sse`
-|`base-url` | Optional URL prefix. For example `base-url=/api/v1` means that the client should access the sse endpoint at `/api/v1` + `sse-endpoint` and the message endpoint is `/api/v1` + `sse-message-endpoint` | -
-|`request-timeout` | Duration to wait for server responses before timing out requests. Applies to all requests made through the client, including tool calls, resource access, and prompt operations. | `20` seconds
-|`keep-alive-interval` |Connection keep-alive interval |`null` - disabled
+|`base-url` |Optional URL prefix. For example, `base-url=/api/v1` means that the client should access the SSE endpoint at `/api/v1` + `sse-endpoint` and the message endpoint is `/api/v1` + `sse-message-endpoint` |`-`
+|`request-timeout` |Duration to wait for server responses before timing out requests. Applies to all requests made through the client, including tool calls, resource access, and prompt operations |`20 seconds`
+|`keep-alive-interval` |Connection keep-alive interval |`null` (disabled)
 |===
 
 == Features and Capabilities
 
 The MCP Server Boot Starter allows servers to expose tools, resources, and prompts to clients.
-It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on server type:
+It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on the server type:
 
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/[Tools]
 Allows servers to expose tools that can be invoked by language models. The MCP Server Boot Starter provides:
 
 * Change notification support
-* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on server type
+* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on the server type
 * Automatic tool specification through Spring beans:
 
 [source,java]
@@ -138,7 +133,7 @@ The auto-configuration will automatically detect and register all tool callbacks
 
 Tools are de-duplicated by name, with the first occurrence of each tool name being used.
 
-You can disable the automatically detect and register all tool callbacks by setting the `tool-callback-converter` to `false`.
+TIP: You can disable the automatic detection and registration of all tool callbacks by setting the `tool-callback-converter` to `false`.
 
 ==== Tool Context Support
 
@@ -231,7 +226,7 @@ public List<McpServerFeatures.SyncCompletionSpecification> myCompletions() {
 
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/client/roots/#root-list-changes[Root Change Consumers]
 
-When roots change, clients that support `listChanged` send a Root Change notification.
+When roots change, clients that support `listChanged` send a root change notification.
 
 * Support for monitoring root changes
 * Automatic conversion to async consumers for reactive applications
@@ -332,9 +327,9 @@ public class McpServerApplication {
 ----
 
 The auto-configuration will automatically register the tool callbacks as MCP tools.
-You can have multiple beans producing ToolCallbacks. The auto-configuration will merge them.
+You can have multiple beans producing ToolCallbacks, and the auto-configuration will merge them.
 
 == Example Applications
-* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-webflux-server[Weather Server (WebFlux)] - Spring AI MCP Server Boot Starter with WebFlux transport.
-* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-stdio-server[Weather Server (STDIO)] - Spring AI MCP Server Boot Starter with STDIO transport.
-* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/manual-webflux-server[Weather Server Manual Configuration] - Spring AI MCP Server Boot Starter that doesn't use auto-configuration but the Java SDK to configure the server manually.
+* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-webflux-server[Weather Server (WebFlux)] - Spring AI MCP Server Boot Starter with WebFlux transport
+* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-stdio-server[Weather Server (STDIO)] - Spring AI MCP Server Boot Starter with STDIO transport
+* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/manual-webflux-server[Weather Server Manual Configuration] - Spring AI MCP Server Boot Starter that doesn't use auto-configuration but uses the Java SDK to configure the server manually

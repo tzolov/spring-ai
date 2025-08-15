@@ -4,7 +4,9 @@
 Stateless MCP servers are designed for simplified deployments where session state is not maintained between requests. 
 These servers are ideal for microservices architectures and cloud-native deployments.
 
-NOTE: Stateless servers doesn't support messages requests to the MCP client (e.g. elicitation, sampling, ping)
+NOTE: They require xref:api/mcp/mcp-client-boot-starter-docs#_streamable_http_transport_properties[streamable-HTTP clients] to support the necessary protocols for handling these features.
+
+NOTE: Stateless servers don't support message requests to the MCP client (e.g., elicitation, sampling, ping).
 
 === Stateless WebMVC Server
 
@@ -16,11 +18,10 @@ NOTE: Stateless servers doesn't support messages requests to the MCP client (e.g
 </dependency>
 ----
 
-Features:
-* Stateless operation with Spring MVC transport
-* No session state management
-* Simplified deployment model
-* Optimized for cloud-native environments
+- Stateless operation with Spring MVC transport
+- No session state management
+- Simplified deployment model
+- Optimized for cloud-native environments
 
 === Stateless WebFlux Server
 
@@ -32,11 +33,10 @@ Features:
 </dependency>
 ----
 
-Features:
-* Reactive stateless operation with WebFlux transport
-* No session state management
-* Non-blocking request processing
-* Optimized for high-throughput scenarios
+- Reactive stateless operation with WebFlux transport
+- No session state management
+- Non-blocking request processing
+- Optimized for high-throughput scenarios
 
 == Configuration Properties
 
@@ -46,7 +46,7 @@ All properties are prefixed with `spring.ai.mcp.server.stateless`:
 |===
 |Property |Description |Default
 |`enabled` |Enable/disable the stateless MCP server |`true`
-|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
+|`tool-callback-converter` |Enable/disable the conversion of Spring AI ToolCallbacks into MCP Tool specs |`true`
 |`name` |Server name for identification |`mcp-server`
 |`version` |Server version |`1.0.0`
 |`instructions` |Optional instructions for client interaction |`null`
@@ -57,7 +57,7 @@ All properties are prefixed with `spring.ai.mcp.server.stateless`:
 |`capabilities.completion` |Enable/disable completion capabilities |`true`
 |`tool-response-mime-type` |Response MIME type per tool name |`-`
 |`mcp-endpoint` |Custom MCP endpoint path |`/mcp`
-|`request-timeout` |Request timeout duration |`20` seconds
+|`request-timeout` |Request timeout duration |`20 seconds`
 |`disallow-delete` |Disallow delete operations |`false`
 |===
 
@@ -65,13 +65,13 @@ All properties are prefixed with `spring.ai.mcp.server.stateless`:
 == Features and Capabilities
 
 The MCP Server Boot Starter allows servers to expose tools, resources, and prompts to clients.
-It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on server type:
+It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on the server type:
 
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/[Tools]
 Allows servers to expose tools that can be invoked by language models. The MCP Server Boot Starter provides:
 
 * Change notification support
-* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on server type
+* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on the server type
 * Automatic tool specification through Spring beans:
 
 [source,java]
@@ -102,9 +102,9 @@ The auto-configuration will automatically detect and register all tool callbacks
 
 Tools are de-duplicated by name, with the first occurrence of each tool name being used.
 
-You can disable the automatically detect and register all tool callbacks by setting the `tool-callback-converter` to `false`.
+TIP: You can disable the automatic detection and registration of all tool callbacks by setting the `tool-callback-converter` to `false`.
 
-NOTE: The `Tool Context Support`. is not applicable for Stateless servers.
+NOTE: Tool Context Support is not applicable for stateless servers.
 
 === link:https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/[Resource Management]
 
@@ -239,4 +239,4 @@ public class McpServerApplication {
 ----
 
 The auto-configuration will automatically register the tool callbacks as MCP tools.
-You can have multiple beans producing ToolCallbacks. The auto-configuration will merge them.
+You can have multiple beans producing ToolCallbacks, and the auto-configuration will merge them.

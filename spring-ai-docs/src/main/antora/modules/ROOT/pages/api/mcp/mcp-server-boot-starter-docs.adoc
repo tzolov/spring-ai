@@ -1,15 +1,15 @@
 = MCP Server Boot Starter
 
-The link:https://modelcontextprotocol.io/docs/learn/server-concepts[Model Context Protocol (MCP) Servers] are programs that expose specific capabilities to AI applications through standardized protocol interfaces. 
+link:https://modelcontextprotocol.io/docs/learn/server-concepts[Model Context Protocol (MCP) Servers] are programs that expose specific capabilities to AI applications through standardized protocol interfaces. 
 Each server provides focused functionality for a particular domain.
 
-The Spring AI MCP Server Boot Starters provides auto-configuration for setting up an link:https://modelcontextprotocol.io/docs/learn/server-concepts[MCP Servers] in Spring Boot applications. 
-It enables seamless integration of MCP server capabilities with Spring Boot's auto-configuration system.
+The Spring AI MCP Server Boot Starters provide auto-configuration for setting up link:https://modelcontextprotocol.io/docs/learn/server-concepts[MCP Servers] in Spring Boot applications. 
+They enable seamless integration of MCP server capabilities with Spring Boot's auto-configuration system.
 
-The MCP Server Boot Starters offers:
+The MCP Server Boot Starters offer:
 
 * Automatic configuration of MCP server components, including tools, resources, and prompts
-* Support for different MCP protocol versions, including stdio, sse, streamable-http and stateless servers.
+* Support for different MCP protocol versions, including STDIO, SSE, Streamable-HTTP, and stateless servers
 * Support for both synchronous and asynchronous operation modes
 * Multiple transport layer options
 * Flexible tool, resource, and prompt specification
@@ -28,21 +28,21 @@ This server type automatically sets up asynchronous tool specifications with bui
 
 == Server Capabilities
 
-Depends on the server and transport types, the MCP Servers can support various capability, such as:
+Depending on the server and transport types, MCP Servers can support various capabilities, such as:
 
-* **Tools** - Allows servers to expose tools that can be invoked by language models. 
-* **Resources** - Provides a standardized way for servers to expose resources to clients. 
-* **Prompts** - Provides a standardized way for servers to expose prompt templates to clients. 
-* **Utility/Completions** - Provides a standardized way for servers to offer argument autocompletion suggestions for prompts and resource URIs.
-* **Utility/Logging** - Provides a standardized way for servers to send structured log messages to clients.
-* **Utility/Progress** - Optional progress tracking for long-running operations through notification messages.
-* **Utility/Ping** - Optional health check mechanism for the server to report its status.
+* **Tools** - Allows servers to expose tools that can be invoked by language models
+* **Resources** - Provides a standardized way for servers to expose resources to clients
+* **Prompts** - Provides a standardized way for servers to expose prompt templates to clients
+* **Utility/Completions** - Provides a standardized way for servers to offer argument autocompletion suggestions for prompts and resource URIs
+* **Utility/Logging** - Provides a standardized way for servers to send structured log messages to clients
+* **Utility/Progress** - Optional progress tracking for long-running operations through notification messages
+* **Utility/Ping** - Optional health check mechanism for the server to report its status
 
 All capabilities are enabled by default. Disabling a capability will prevent the server from registering and exposing the corresponding features to clients.
 
 == Transport Options
 
-The MCP Server supports multiple transport mechanisms, each with its dedicated starter:
+MCP Servers support multiple transport mechanisms, each with its dedicated starter:
 
 * Standard Input/Output (STDIO) - `spring-ai-starter-mcp-server`
 * SSE Spring MVC - `spring-ai-starter-mcp-server-webmvc`
@@ -59,13 +59,13 @@ Choose one of the following starters based on your transport and feature require
 - xref:api/mcp/mcp-stateless-server-boot-starter-docs.adoc[Stateless MCP Servers]
 
 
-
 == Example Applications
-* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-webflux-server[Weather Server (SSE WebFlux)] - Spring AI MCP Server Boot Starter with WebFlux transport.
-* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-stdio-server[Weather Server (STDIO)] - Spring AI MCP Server Boot Starter with STDIO transport.
-* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/manual-webflux-server[Weather Server Manual Configuration] - Spring AI MCP Server Boot Starter that doesn't use auto-configuration but the Java SDK to configure the server manually.
-* Streamable-HTTP WebFlux/WebMVC - TODO
-* Stateless WebFlux/WebMVC - TODO
+
+* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-webflux-server[Weather Server (SSE WebFlux)] - Spring AI MCP Server Boot Starter with WebFlux transport
+* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-stdio-server[Weather Server (STDIO)] - Spring AI MCP Server Boot Starter with STDIO transport
+* link:https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/manual-webflux-server[Weather Server Manual Configuration] - Spring AI MCP Server Boot Starter that doesn't use auto-configuration but uses the Java SDK to configure the server manually
+* Streamable-HTTP WebFlux/WebMVC Example - TODO
+* Stateless WebFlux/WebMVC Example - TODO
 
 == Additional Resources
 
