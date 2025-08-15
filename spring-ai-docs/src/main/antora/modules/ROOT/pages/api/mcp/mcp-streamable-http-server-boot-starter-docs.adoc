@@ -1,0 +1,287 @@
+
+== Streamable-HTTP MCP Servers
+
+Streamable-HTTP MCP servers provide enhanced functionality with support for change notifications and persistent connections. 
+These servers are ideal for applications that need to notify clients about dynamic changes to tools, resources, or prompts.
+
+=== Streamable-HTTP WebMVC Server
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-mcp-server-streamable-webmvc</artifactId>
+</dependency>
+----
+
+Features:
+* Full MCP server capabilities with Spring MVC Streamable transport
+* Change notifications for tools, resources, and prompts
+* Persistent connection management
+* Root change handling support
+
+=== Streamable-HTTP WebFlux Server
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-mcp-server-streamable-webflux</artifactId>
+</dependency>
+----
+
+Features:
+* Reactive MCP server with WebFlux Streamable transport
+* Change notifications for tools, resources, and prompts
+* Non-blocking persistent connections
+* Root change handling support
+
+== Configuration Properties
+
+All properties are prefixed with `spring.ai.mcp.server.streamable`:
+
+[options="header"]
+|===
+|Property |Description |Default
+|`enabled` |Enable/disable the streamable MCP server |`true`
+|`tool-callback-converter` |Enable/disable the convertion of Spring-AI ToolCallbacks into MCP Tool specs |`true`
+|`name` |Server name for identification |`mcp-server`
+|`version` |Server version |`1.0.0`
+|`instructions` |Optional instructions for client interaction |`null`
+|`type` |Server type (SYNC/ASYNC) |`SYNC`
+|`capabilities.resource` |Enable/disable resource capabilities |`true`
+|`capabilities.tool` |Enable/disable tool capabilities |`true`
+|`capabilities.prompt` |Enable/disable prompt capabilities |`true`
+|`capabilities.completion` |Enable/disable completion capabilities |`true`
+|`resource-change-notification` |Enable resource change notifications |`true`
+|`prompt-change-notification` |Enable prompt change notifications |`true`
+|`tool-change-notification` |Enable tool change notifications |`true`
+|`tool-response-mime-type` |Response MIME type per tool name |`-`
+|`mcp-endpoint` |Custom MCP endpoint path |`/mcp`
+|`request-timeout` |Request timeout duration |`20` seconds
+|`keep-alive-interval` |Connection keep-alive interval |`null` - disabled
+|===
+
+== Features and Capabilities
+
+The MCP Server supports four main capability types that can be individually enabled or disabled:
+
+- **Tools** - Enable/disable tool capabilities with `spring.ai.mcp.server.streamable.capabilities.tool=true|false`
+- **Resources** - Enable/disable resource capabilities with `spring.ai.mcp.server.streamable.capabilities.resource=true|false`
+- **Prompts** - Enable/disable prompt capabilities with `spring.ai.mcp.server.streamable.capabilities.prompt=true|false`
+- **Completions** - Enable/disable completion capabilities with `spring.ai.mcp.server.streamable.capabilities.completion=true|false`
+
+All capabilities are enabled by default. Disabling a capability will prevent the server from registering and exposing the corresponding features to clients.
+
+The MCP Server Boot Starter allows servers to expose tools, resources, and prompts to clients.
+It automatically converts custom capability handlers registered as Spring beans to sync/async specifications based on server type:
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/server/tools[Tools]
+Allows servers to expose tools that can be invoked by language models. The MCP Server Boot Starter provides:
+
+* Change notification support
+* xref:api/tools.adoc[Spring AI Tools] are automatically converted to sync/async specifications based on server type
+* Automatic tool specification through Spring beans:
+
+[source,java]
+----
+@Bean
+public ToolCallbackProvider myTools(...) {
+    List<ToolCallback> tools = ...
+    return ToolCallbackProvider.from(tools);
+}
+----
+
+or using the low-level API:
+
+[source,java]
+----
+@Bean
+public List<McpServerFeatures.SyncToolSpecification> myTools(...) {
+    List<McpServerFeatures.SyncToolSpecification> tools = ...
+    return tools;
+}
+----
+
+The auto-configuration will automatically detect and register all tool callbacks from:
+
+- Individual `ToolCallback` beans
+- Lists of `ToolCallback` beans
+- `ToolCallbackProvider` beans
+
+Tools are de-duplicated by name, with the first occurrence of each tool name being used.
+
+You can disable the automatically detect and register all tool callbacks by setting the `tool-callback-converter` to `false`.
+
+==== Tool Context Support
+
+The xref:api/tools.adoc#_tool_context[ToolContext] is supported, allowing contextual information to be passed to tool calls. It contains an `McpSyncServerExchange` instance under the `exchange` key, accessible via `McpToolUtils.getMcpExchange(toolContext)`. See this https://github.com/spring-projects/spring-ai-examples/blob/3fab8483b8deddc241b1e16b8b049616604b7767/model-context-protocol/sampling/mcp-weather-webmvc-server/src/main/java/org/springframework/ai/mcp/sample/server/WeatherService.java#L59-L126[example] demonstrating `exchange.loggingNotification(...)` and `exchange.createMessage(...)`.
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/server/resources/[Resource Management]
+
+Provides a standardized way for servers to expose resources to clients.
+
+* Static and dynamic resource specifications
+* Optional change notifications
+* Support for resource templates
+* Automatic conversion between sync/async resource specifications
+* Automatic resource specification through Spring beans:
+
+[source,java]
+----
+@Bean
+public List<McpServerFeatures.SyncResourceSpecification> myResources(...) {
+    var systemInfoResource = new McpSchema.Resource(...);
+    var resourceSpecification = new McpServerFeatures.SyncResourceSpecification(systemInfoResource, (exchange, request) -> {
+        try {
+            var systemInfo = Map.of(...);
+            String jsonContent = new ObjectMapper().writeValueAsString(systemInfo);
+            return new McpSchema.ReadResourceResult(
+                    List.of(new McpSchema.TextResourceContents(request.uri(), "application/json", jsonContent)));
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Failed to generate system info", e);
+        }
+    });
+
+    return List.of(resourceSpecification);
+}
+----
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/server/prompts/[Prompt Management]
+
+Provides a standardized way for servers to expose prompt templates to clients.
+
+* Change notification support
+* Template versioning
+* Automatic conversion between sync/async prompt specifications
+* Automatic prompt specification through Spring beans:
+
+[source,java]
+----
+@Bean
+public List<McpServerFeatures.SyncPromptSpecification> myPrompts() {
+    var prompt = new McpSchema.Prompt("greeting", "A friendly greeting prompt",
+        List.of(new McpSchema.PromptArgument("name", "The name to greet", true)));
+
+    var promptSpecification = new McpServerFeatures.SyncPromptSpecification(prompt, (exchange, getPromptRequest) -> {
+        String nameArgument = (String) getPromptRequest.arguments().get("name");
+        if (nameArgument == null) { nameArgument = "friend"; }
+        var userMessage = new PromptMessage(Role.USER, new TextContent("Hello " + nameArgument + "! How can I assist you today?"));
+        return new GetPromptResult("A personalized greeting message", List.of(userMessage));
+    });
+
+    return List.of(promptSpecification);
+}
+----
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/server/utilities/completion/[Completion Management]
+
+Provides a standardized way for servers to expose completion capabilities to clients.
+
+* Support for both sync and async completion specifications
+* Automatic registration through Spring beans:
+
+[source,java]
+----
+@Bean
+public List<McpServerFeatures.SyncCompletionSpecification> myCompletions() {
+    var completion = new McpServerFeatures.SyncCompletionSpecification(
+        "code-completion",
+        "Provides code completion suggestions",
+        (exchange, request) -> {
+            // Implementation that returns completion suggestions
+            return new McpSchema.CompletionResult(List.of(
+                new McpSchema.Completion("suggestion1", "First suggestion"),
+                new McpSchema.Completion("suggestion2", "Second suggestion")
+            ));
+        }
+    );
+
+    return List.of(completion);
+}
+----
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/server/utilities/logging/[Logging Management]
+
+Provides a standardized way for servers to send structured log messages to clients. 
+
+TODO: add code snippet
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/basic/utilities/ping/[Ping]
+
+Ping mechanism for the server to verify that their clients are still alive
+
+TODO: add code snippet
+
+
+=== link:https://modelcontextprotocol.io/specification/2025-03-26/client/roots#root-list-changes[Root Change Consumers]
+
+When roots change, clients that support `listChanged` send a Root Change notification.
+
+* Support for monitoring root changes
+* Automatic conversion to async consumers for reactive applications
+* Optional registration through Spring beans
+
+[source,java]
+----
+@Bean
+public BiConsumer<McpSyncServerExchange, List<McpSchema.Root>> rootsChangeHandler() {
+    return (exchange, roots) -> {
+        logger.info("Registering root resources: {}", roots);
+    };
+}
+----
+
+== Usage Examples
+
+=== Streamable Http Server Configuration
+[source,yaml]
+----
+# Using spring-ai-starter-mcp-server-streamable-webmvc
+spring:
+  ai:
+    mcp:
+      server:
+        streamable:
+          name: streamable-mcp-server
+          version: 1.0.0
+          type: SYNC
+          instructions: "This streamable server provides real-time notifications"
+          resource-change-notification: true
+          tool-change-notification: true
+          prompt-change-notification: true
+----
+
+
+=== Creating a Spring Boot Application with MCP Server
+
+[source,java]
+----
+@Service
+public class WeatherService {
+
+    @Tool(description = "Get weather information by city name")
+    public String getWeather(String cityName) {
+        // Implementation
+    }
+}
+
+@SpringBootApplication
+public class McpServerApplication {
+
+    private static final Logger logger = LoggerFactory.getLogger(McpServerApplication.class);
+
+    public static void main(String[] args) {
+        SpringApplication.run(McpServerApplication.class, args);
+    }
+
+	@Bean
+	public ToolCallbackProvider weatherTools(WeatherService weatherService) {
+		return MethodToolCallbackProvider.builder().toolObjects(weatherService).build();
+	}
+}
+----
+
+The auto-configuration will automatically register the tool callbacks as MCP tools.
+You can have multiple beans producing ToolCallbacks. The auto-configuration will merge them.
