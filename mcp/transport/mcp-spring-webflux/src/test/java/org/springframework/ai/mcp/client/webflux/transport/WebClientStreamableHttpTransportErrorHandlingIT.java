@@ -289,7 +289,6 @@ public class WebClientStreamableHttpTransportErrorHandlingIT {
 	 * Test session recovery after SessionNotFoundException Fixed version using reactive
 	 * patterns and proper synchronization
 	 */
-	//@Test
 	void testSessionRecoveryAfter404() {
 		// First establish a session
 		this.serverResponseStatus.set(200);
