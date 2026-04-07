@@ -41,7 +41,7 @@
 		<module>spring-ai-rag</module>
 		<module>advisors/spring-ai-advisors-vector-store</module>
 
-		<module>spring-ai-memory</module>
+		<module>spring-ai-session</module>
 
 		<module>memory/repository/spring-ai-model-chat-memory-repository-cassandra</module>
 		<module>memory/repository/spring-ai-model-chat-memory-repository-cosmos-db</module>
