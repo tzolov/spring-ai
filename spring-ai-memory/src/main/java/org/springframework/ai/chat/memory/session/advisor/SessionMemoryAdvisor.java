@@ -128,6 +128,9 @@ public final class SessionMemoryAdvisor implements BaseAdvisor {
 
 	@Override
 	public ChatClientRequest before(ChatClientRequest request, AdvisorChain advisorChain) {
+
+		// 0. Determine the session ID for this request, either from the context or
+		// falling back to the default.
 		String sessionId = getSessionId(request.context());
 
 		// 1. Find or create the session. The Session object is cached in the request

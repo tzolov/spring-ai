@@ -44,7 +44,7 @@ via `SessionService.getEvents()`.
 
 | Field          | Purpose                                                                                                             |
 |----------------|---------------------------------------------------------------------------------------------------------------------|
-| `id`           | unique identifier                                                                                                   |
+| `id`           | unique session identifier                                                                                                   |
 | `userId`       | owning user or agent (required, used for isolation)                                                                 |
 | `createdAt`    |                                                                                                                     |
 | `expiresAt`    | expiry instant; defaults to 60 days from creation when no TTL is specified; `null` means no expiry. The builder rejects values in the past. |
@@ -61,7 +61,7 @@ service generates a UUID automatically.
 
 ### SessionEvent
 
-`SessionEvent` is an immutable class — not a record — that acts as a thin wrapper around
+`SessionEvent` is an immutable class that acts as a thin wrapper around
 the existing Spring AI `Message` types. It adds only what `Message` intentionally lacks:
 
 | Field       | Purpose                                                                                                                                                     |
@@ -70,7 +70,7 @@ the existing Spring AI `Message` types. It adds only what `Message` intentionall
 | `sessionId` | Ownership / isolation                                                                                                                                       |
 | `timestamp` | Chronological ordering                                                                                                                                      |
 | `message`   | The actual Spring AI message (no duplication)                                                                                                               |
-| `metadata`  | Framework flags — use constants `SessionEvent.METADATA_SYNTHETIC` and `SessionEvent.METADATA_COMPACTION_SOURCE` instead of raw string literals             |
+| `metadata`  | Framework flags — such as `SessionEvent.METADATA_SYNTHETIC` and `SessionEvent.METADATA_COMPACTION_SOURCE`|
 | `branch`    | Dot-separated agent path (e.g. `"orch.researcher"`); `null` for root-level events. Used by `EventFilter.forBranch()` to isolate peer sub-agents in multi-agent sessions |
 
 The `message` field carries the content using the existing Spring AI message types:
@@ -162,8 +162,7 @@ tool-call/result pair, or from removing an assistant reply while keeping the use
 that prompted it.
 
 Turns are counted via `CompactionRequest.currentTurnCount()`, which counts only
-non-synthetic, **root-level** (`branch == null`) `USER` events. Synthetic shadow prompts
-and sub-agent `USER` messages on named branches are excluded so that a multi-agent session
+non-synthetic, **root-level** (`branch == null`) `USER` events. Synthetic and sub-agent `USER` messages on named branches are excluded so that a multi-agent session
 does not inflate the turn count used by `TurnCountTrigger`.
 
 ### Synthetic Summary Turn
@@ -185,13 +184,16 @@ message.
 All compaction strategies treat synthetic events as opaque — they separate them from real
 events before any processing, preserve them, and place them first in the compacted result.
 
+> **TODO:** perhaps we will need different strategies where compactions recursively compasts the previous syntentic events as well, or not
+
+
 ---
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────┐
-│              SessionMemoryAdvisor            │  ← ChatClient integration
+│              SessionMemoryAdvisor           │  ← ChatClient integration
 └─────────────────────┬───────────────────────┘
                       │ uses
 ┌─────────────────────▼───────────────────────┐
@@ -199,9 +201,9 @@ events before any processing, preserve them, and place them first in the compact
 │  create / find / delete / compact           │
 └──────────┬──────────────────────┬───────────┘
            │                      │
-┌──────────▼──────────┐  ┌────────▼──────────────────────────────┐
+┌──────────▼──────────┐  ┌────────▼───────────────────────────────┐
 │  SessionRepository  │  │        Compaction Framework            │
-│  (persistence SPI)  │  │  Trigger ──► Strategy ──► Result      │
+│  (persistence SPI)  │  │  Trigger ──► Strategy ──► Result       │
 │                     │  │                                        │
 │  save               │  │  CompactionRequest(session, events,    │
 │  findById           │  │    eventCount, turnCount)              │
@@ -215,16 +217,16 @@ events before any processing, preserve them, and place them first in the compact
 │  findEvents         │
 └──────────┬──────────┘
            │
-┌──────────▼──────────────────────────────────┐
-│         InMemorySessionRepository            │
-│                                              │
-│  ConcurrentHashMap<id, SessionData>          │
+┌──────────▼─────────────────────────────────────┐
+│         InMemorySessionRepository              │
+│                                                │
+│  ConcurrentHashMap<id, SessionData>            │
 │  SessionData = (Session, List<Event>, version) │
-│  All mutations are atomic via compute()      │
-│                                              │
-│  Swap for Redis, JDBC, etc. by implementing  │
-│  SessionRepository                           │
-└──────────────────────────────────────────────┘
+│  All mutations are atomic via compute()        │
+│                                                │
+│  Swap for Redis, JDBC, etc. by implementing    │
+│  SessionRepository                             │
+└────────────────────────────────────────────────┘
 ```
 
 **Design rationale — why `Session` carries no events:**

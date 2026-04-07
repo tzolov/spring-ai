@@ -240,8 +240,7 @@ public final class RecursiveSummarizationCompactionStrategy implements Compactio
 			prompt.append("=== PRIOR SUMMARY ===\n");
 			// Exclude synthetic USER shadow prompts — they are structural placeholders,
 			// not summary content. Include only ASSISTANT (and legacy SYSTEM) events
-			// whose
-			// text carries the actual compressed history.
+			// whose text carries the actual compressed history.
 			priorSummaries.stream()
 				.filter(e -> e.getMessageType() != MessageType.USER)
 				.forEach(e -> prompt.append(e.getMessage().getText()).append("\n"));
