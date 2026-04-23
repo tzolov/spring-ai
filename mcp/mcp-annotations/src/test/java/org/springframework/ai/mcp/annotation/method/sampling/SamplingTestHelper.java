@@ -42,8 +42,7 @@ public final class SamplingTestHelper {
 		SamplingMessage userMessage = new SamplingMessage(Role.USER,
 				new TextContent("Hello, can you help me with a task?"));
 
-		return CreateMessageRequest.builder()
-			.messages(List.of(userMessage))
+		return CreateMessageRequest.builder(List.of(userMessage), 500)
 			.modelPreferences(ModelPreferences.builder().addHint("claude-3-haiku").build())
 			.systemPrompt("You are a helpful assistant.")
 			.temperature(0.7)

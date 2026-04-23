@@ -317,17 +317,15 @@ public class StreamableMcpAnnotationsIT {
 			public String toolWithSamplingAndElicitation(McpSyncServerExchange exchange, @McpToolParam String input,
 					@McpProgressToken String progressToken) {
 
-				exchange.loggingNotification(LoggingMessageNotification.builder().data("Tool1 Started!").build());
+				exchange.loggingNotification(LoggingMessageNotification.builder(LoggingLevel.INFO, "Tool1 Started!").build());
 
 				exchange.progressNotification(new ProgressNotification(progressToken, 0.0, 1.0, "tool call start"));
 
 				exchange.ping(); // call client ping
 
 				// call elicitation
-				var elicitationRequest = McpSchema.ElicitRequest.builder()
-					.message("Test message")
-					.requestedSchema(
-							Map.of("type", "object", "properties", Map.of("message", Map.of("type", "string"))))
+				var elicitationRequest = McpSchema.ElicitRequest.builder("Test message",
+						Map.of("type", "object", "properties", Map.of("message", Map.of("type", "string"))))
 					.build();
 
 				ElicitResult elicitationResult = exchange.createElicitation(elicitationRequest);
@@ -336,9 +334,9 @@ public class StreamableMcpAnnotationsIT {
 					.progressNotification(new ProgressNotification(progressToken, 0.50, 1.0, "elicitation completed"));
 
 				// call sampling
-				var createMessageRequest = McpSchema.CreateMessageRequest.builder()
-					.messages(List.of(new McpSchema.SamplingMessage(McpSchema.Role.USER,
-							new McpSchema.TextContent("Test Sampling Message"))))
+				var createMessageRequest = McpSchema.CreateMessageRequest
+					.builder(List.of(new McpSchema.SamplingMessage(McpSchema.Role.USER,
+							new McpSchema.TextContent("Test Sampling Message"))), 500)
 					.modelPreferences(ModelPreferences.builder()
 						.hints(List.of(ModelHint.of("OpenAi"), ModelHint.of("Ollama")))
 						.costPriority(1.0)
@@ -351,7 +349,7 @@ public class StreamableMcpAnnotationsIT {
 
 				exchange.progressNotification(new ProgressNotification(progressToken, 1.0, 1.0, "sampling completed"));
 
-				exchange.loggingNotification(LoggingMessageNotification.builder().data("Tool1 Done!").build());
+				exchange.loggingNotification(LoggingMessageNotification.builder(LoggingLevel.INFO, "Tool1 Done!").build());
 
 				return "CALL RESPONSE: " + samplingResponse.toString() + ", " + elicitationResult.toString();
 			}
@@ -400,10 +398,11 @@ public class StreamableMcpAnnotationsIT {
 					languageArgument = "java";
 				}
 
-				exchange.loggingNotification(LoggingMessageNotification.builder()
-					.logger("test-logger")
-					.data("User prompt: Hello " + languageArgument + "! How can I assist you today?")
-					.build());
+				exchange.loggingNotification(
+						LoggingMessageNotification.builder(LoggingLevel.INFO,
+								"User prompt: Hello " + languageArgument + "! How can I assist you today?")
+							.logger("test-logger")
+							.build());
 
 				var userMessage = new PromptMessage(Role.USER,
 						new TextContent("Hello " + languageArgument + "! How can I assist you today?"));

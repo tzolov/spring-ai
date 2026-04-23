@@ -379,10 +379,7 @@ public class DefaultMcpSyncRequestContextTests {
 		when(this.exchange.getClientCapabilities()).thenReturn(capabilities);
 
 		ElicitResult expectedResult = mock(ElicitResult.class);
-		ElicitRequest elicitRequest = ElicitRequest.builder()
-			.message("Test message")
-			.requestedSchema(Map.of("type", "string"))
-			.build();
+		ElicitRequest elicitRequest = ElicitRequest.builder("Test message", Map.of("type", "string")).build();
 
 		when(this.exchange.createElicitation(elicitRequest)).thenReturn(expectedResult);
 
@@ -495,9 +492,8 @@ public class DefaultMcpSyncRequestContextTests {
 		when(this.exchange.getClientCapabilities()).thenReturn(capabilities);
 
 		CreateMessageResult expectedResult = mock(CreateMessageResult.class);
-		CreateMessageRequest createRequest = CreateMessageRequest.builder()
-			.messages(java.util.List.of(new SamplingMessage(Role.USER, new TextContent("Test"))))
-			.maxTokens(500)
+		CreateMessageRequest createRequest = CreateMessageRequest
+			.builder(java.util.List.of(new SamplingMessage(Role.USER, new TextContent("Test"))), 500)
 			.build();
 
 		when(this.exchange.createMessage(createRequest)).thenReturn(expectedResult);
@@ -512,9 +508,8 @@ public class DefaultMcpSyncRequestContextTests {
 	public void testSamplingWhenNotSupported() {
 		when(this.exchange.getClientCapabilities()).thenReturn(null);
 
-		CreateMessageRequest createRequest = CreateMessageRequest.builder()
-			.messages(java.util.List.of(new SamplingMessage(Role.USER, new TextContent("Test"))))
-			.maxTokens(500)
+		CreateMessageRequest createRequest = CreateMessageRequest
+			.builder(java.util.List.of(new SamplingMessage(Role.USER, new TextContent("Test"))), 500)
 			.build();
 
 		assertThatThrownBy(() -> this.context.sample(createRequest)).isInstanceOf(IllegalStateException.class)

@@ -77,6 +77,84 @@ var response = model.call(prompt);
 --
 
 
+=== MCP Java SDK Upgrade to 2.0.0
+
+Spring AI now uses MCP Java SDK version `2.0.0-SNAPSHOT`, which tightens the builder APIs for three core schema types by making previously-optional fields required.
+The no-argument `builder()` factory on each of these types is deprecated; the new parameterized factory methods enforce the required fields at construction time via `Assert.notNull`, so code that uses the old builder without supplying the required fields will throw `IllegalArgumentException` at runtime.
+
+==== `CreateMessageRequest` — `maxTokens` is now required
+
+The `messages` and `maxTokens` fields have always been required by the MCP specification. The SDK now enforces this at runtime.
+
+[source,java]
+----
+// Before (compiles but throws IllegalArgumentException at runtime if maxTokens is not set)
+McpSchema.CreateMessageRequest.builder()
+    .messages(List.of(new McpSchema.SamplingMessage(McpSchema.Role.USER,
+            new McpSchema.TextContent("Hello"))))
+    .modelPreferences(preferences)
+    .build();
+
+// After — pass messages and maxTokens to the factory method
+McpSchema.CreateMessageRequest.builder(
+        List.of(new McpSchema.SamplingMessage(McpSchema.Role.USER,
+                new McpSchema.TextContent("Hello"))),
+        500)
+    .modelPreferences(preferences)
+    .build();
+----
+
+==== `ElicitRequest` — `requestedSchema` is now required
+
+The `message` and `requestedSchema` fields have always been required by the MCP specification. The SDK now enforces this at runtime.
+
+[source,java]
+----
+// Before (compiles but throws IllegalArgumentException at runtime if requestedSchema is not set)
+McpSchema.ElicitRequest.builder()
+    .message("Please provide your name")
+    .build();
+
+// After — pass message and requestedSchema to the factory method
+McpSchema.ElicitRequest.builder(
+        "Please provide your name",
+        Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string"))))
+    .build();
+----
+
+==== `LoggingMessageNotification` — `level` and `data` are now required
+
+[source,java]
+----
+// Before (compiles but throws IllegalArgumentException at runtime if data is not set)
+LoggingMessageNotification.builder()
+    .level(LoggingLevel.INFO)
+    .logger("my-logger")
+    .data("Server started")
+    .build();
+
+// After — pass level and data to the factory method
+LoggingMessageNotification.builder(LoggingLevel.INFO, "Server started")
+    .logger("my-logger")
+    .build();
+----
+
+==== Impact
+
+Any code that calls the no-arg `builder()` on `CreateMessageRequest`, `ElicitRequest`, or `LoggingMessageNotification` **and does not set all required fields** before calling `build()` will throw `IllegalArgumentException` at runtime.
+
+==== Migration
+
+Switch from the deprecated no-arg `builder()` to the new parameterized factory:
+
+[cols="1,1", options="header"]
+|===
+| Deprecated form | Replacement
+| `CreateMessageRequest.builder().messages(...).maxTokens(n).build()` | `CreateMessageRequest.builder(messages, maxTokens).build()`
+| `ElicitRequest.builder().message(...).requestedSchema(...).build()` | `ElicitRequest.builder(message, requestedSchema).build()`
+| `LoggingMessageNotification.builder().level(...).data(...).build()` | `LoggingMessageNotification.builder(level, data).build()`
+|===
+
 [[upgrading-to-2-0-0-M3]]
 == Upgrading to 2.0.0-M3
 
