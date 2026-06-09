@@ -17,9 +17,13 @@ Typical use cases include:
 * swapping the dispatcher `ExecutorService` (for example, to route async I/O through virtual threads);
 * configuring proxy, SSL, hostname verification, or the connection-pool sizing exposed by the builder.
 
-When several customizers are present, they are applied in `@Order` order, after Spring AI's own defaults, so user code wins.
+When several customizer beans are present in the application context, they are applied in `@Order` / `@Priority` order, after Spring AI's own defaults, so user code wins.
 
-The same hook is available when wiring the model manually via `AnthropicChatModel.Builder`:
+NOTE: Each customizer is called *twice* per `AnthropicChatModel` — once for the synchronous client and once for the asynchronous client that back the model.
+Implementations should be idempotent (i.e. safe to call more than once).
+
+The same hook is available when wiring the model manually via `AnthropicChatModel.Builder`.
+In that case the customizers are applied in registration order; `@Order` annotations have no effect outside of Spring's bean container:
 
 [source,java]
 ----

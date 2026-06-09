@@ -1732,6 +1732,16 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 		 * @return the configured chat model
 		 */
 		public AnthropicChatModel build() {
+			if (!this.httpClientCustomizers.isEmpty() && this.anthropicClient != null) {
+				throw new IllegalArgumentException(
+						"httpClientBuilderCustomizers cannot be combined with a pre-built anthropicClient "
+								+ "because the HTTP layer is already constructed");
+			}
+			if (!this.httpClientCustomizers.isEmpty() && this.anthropicClientAsync != null) {
+				throw new IllegalArgumentException(
+						"httpClientBuilderCustomizers cannot be combined with a pre-built anthropicClientAsync "
+								+ "because the HTTP layer is already constructed");
+			}
 			return new AnthropicChatModel(this.anthropicClient, this.anthropicClientAsync, this.options,
 					this.toolCallingManager, this.observationRegistry, this.meterRegistry, this.dispatcherExecutor,
 					this.httpClientCustomizers);

@@ -45,8 +45,8 @@ class AnthropicHttpClientBuilderCustomizerAutoConfigurationTests {
 					AutoConfigurations.of(AnthropicChatAutoConfiguration.class, ToolCallingAutoConfiguration.class))
 			.withBean(AnthropicHttpClientBuilderCustomizer.class, () -> builder -> invocations.incrementAndGet())
 			.run(context -> assertThat(invocations.get())
-				.as("customizer must be called at least once when chat model is created")
-				.isPositive());
+				.as("customizer must be called twice — once for the sync client and once for the async client")
+				.isEqualTo(2));
 	}
 
 	@Test
@@ -59,8 +59,9 @@ class AnthropicHttpClientBuilderCustomizerAutoConfigurationTests {
 					() -> builder -> invocations.incrementAndGet())
 			.withBean("second", AnthropicHttpClientBuilderCustomizer.class,
 					() -> builder -> invocations.incrementAndGet())
-			.run(context -> assertThat(invocations.get()).as("both customizers must be applied")
-				.isGreaterThanOrEqualTo(2));
+			.run(context -> assertThat(invocations.get())
+				.as("each customizer must be called twice (once per client), so 2 customizers × 2 = 4")
+				.isEqualTo(4));
 	}
 
 	@Test

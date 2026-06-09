@@ -24,7 +24,6 @@ package org.springframework.ai.anthropic.http.okhttp;
  * dispatcher {@code ExecutorService}, or tweak any other OkHttp setting exposed by the
  * builder.
  *
- * @author Thomas Vitale
  * @author Ilayaperumal Gopinathan
  * @since 2.0.0
  */
@@ -34,6 +33,13 @@ public interface AnthropicHttpClientBuilderCustomizer {
 	/**
 	 * Customize the {@link SpringAiAnthropicHttpClient.Builder} prior to building the
 	 * underlying OkHttp client.
+	 * <p>
+	 * This method is called <em>twice</em> per
+	 * {@link org.springframework.ai.anthropic.AnthropicChatModel} instance — once for the
+	 * synchronous client and once for the asynchronous client. Implementations must be
+	 * idempotent; side effects that must fire exactly once (for example, registering an
+	 * {@code EventListenerFactory} or binding external state) should guard against
+	 * re-execution.
 	 * @param builder the builder to customize
 	 */
 	void customize(SpringAiAnthropicHttpClient.Builder builder);

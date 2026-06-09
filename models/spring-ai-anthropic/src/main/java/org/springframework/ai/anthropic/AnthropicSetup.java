@@ -37,6 +37,7 @@ import org.jspecify.annotations.Nullable;
 
 import org.springframework.ai.anthropic.http.okhttp.AnthropicHttpClientBuilderCustomizer;
 import org.springframework.ai.anthropic.http.okhttp.SpringAiAnthropicHttpClient;
+import org.springframework.util.Assert;
 
 /**
  * Factory class for creating and configuring Anthropic SDK client instances.
@@ -192,6 +193,7 @@ public final class AnthropicSetup {
 			@Nullable MeterRegistry meterRegistry, @Nullable ExecutorService dispatcherExecutor,
 			List<AnthropicHttpClientBuilderCustomizer> httpClientCustomizers) {
 
+		Assert.notNull(httpClientCustomizers, "httpClientCustomizers must not be null");
 		ClientOptions opts = buildClientOptions(baseUrl, apiKey, timeout, maxRetries, proxy, customHeaders,
 				observationRegistry, meterRegistry, SYNC_CLIENT_TAGS, dispatcherExecutor, httpClientCustomizers);
 		return new AnthropicClientImpl(opts);
@@ -282,6 +284,7 @@ public final class AnthropicSetup {
 			@Nullable MeterRegistry meterRegistry, @Nullable ExecutorService dispatcherExecutor,
 			List<AnthropicHttpClientBuilderCustomizer> httpClientCustomizers) {
 
+		Assert.notNull(httpClientCustomizers, "httpClientCustomizers must not be null");
 		ClientOptions opts = buildClientOptions(baseUrl, apiKey, timeout, maxRetries, proxy, customHeaders,
 				observationRegistry, meterRegistry, ASYNC_CLIENT_TAGS, dispatcherExecutor, httpClientCustomizers);
 		return new AnthropicClientAsyncImpl(opts);
@@ -315,12 +318,22 @@ public final class AnthropicSetup {
 			.proxy(proxy)
 			.observationRegistry(observationRegistry)
 			.meterRegistry(meterRegistry)
-			.meterTags(connectionPoolTags)
 			.dispatcherExecutorService(dispatcherExecutor);
 
 		for (AnthropicHttpClientBuilderCustomizer customizer : httpClientCustomizers) {
 			customizer.customize(rawHttpBuilder);
 		}
+
+		// Re-apply Spring AI's resolved backend and meterTags after the customizer loop
+		// so
+		// that neither can be inadvertently overridden:
+		// - backend: applyCredentials() below relies on the same backend instance; a
+		// replacement would misalign WIF credential injection.
+		// - meterTags: SYNC_CLIENT_TAGS / ASYNC_CLIENT_TAGS discriminate the two OkHttp
+		// connection-pool metric bindings; identical tags would cause duplicate gauge
+		// registration in the MeterRegistry at startup.
+		rawHttpBuilder.backend(backend);
+		rawHttpBuilder.meterTags(connectionPoolTags);
 
 		SpringAiAnthropicHttpClient rawHttp = rawHttpBuilder.build();
 

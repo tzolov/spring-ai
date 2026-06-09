@@ -570,8 +570,12 @@ public final class SpringAiAnthropicHttpClient implements HttpClient {
 		}
 
 		/**
-		 * Adds an OkHttp interceptor that runs after the Micrometer observation
-		 * interceptor. Use this to attach cross-cutting concerns such as OAuth2
+		 * Adds an OkHttp application interceptor. The observation interceptor is
+		 * outermost (added first); user interceptors are nested inside it. Consequently,
+		 * on the <em>request</em> path user interceptors execute after the observation
+		 * interceptor, and on the <em>response</em> path they execute before it — the
+		 * observation span is open for the full duration of the user interceptor's
+		 * execution. Use this to attach cross-cutting concerns such as OAuth2
 		 * bearer-token injection, custom logging, or tenant-propagation headers.
 		 */
 		public Builder interceptor(Interceptor interceptor) {

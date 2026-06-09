@@ -122,8 +122,8 @@ class AnthropicHttpClientBuilderCustomizerTests {
 			chatModel.call(new Prompt("Hi"));
 
 			assertThat(invocations.get())
-				.as("customizer must be invoked when the model is built via AnthropicChatModel.Builder")
-				.isPositive();
+				.as("customizer must be invoked twice — once for the sync client and once for the async client")
+				.isEqualTo(2);
 		}
 	}
 
