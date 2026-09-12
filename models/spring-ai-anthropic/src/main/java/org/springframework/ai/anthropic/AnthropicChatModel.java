@@ -177,14 +177,25 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 
 	private static final ToolCallingManager DEFAULT_TOOL_CALLING_MANAGER = ToolCallingManager.builder().build();
 
-	/** The {@link OpaquePayload#provider()} of parts produced by this model. */
-	static final String ANTHROPIC_PROVIDER = "anthropic";
+	/**
+	 * The {@link OpaquePayload#provider()} of parts produced by this model.
+	 * @since 2.1.0
+	 */
+	public static final String ANTHROPIC_PROVIDER = "anthropic";
 
-	/** The {@link OpaquePayload#kind()} of a thinking block signature. */
-	static final String PAYLOAD_SIGNATURE = "signature";
+	/**
+	 * The {@link OpaquePayload#kind()} of a thinking block signature; the payload data is
+	 * the signature, replayed unmodified.
+	 * @since 2.1.0
+	 */
+	public static final String PAYLOAD_SIGNATURE = "signature";
 
-	/** The {@link OpaquePayload#kind()} of a redacted thinking block. */
-	static final String PAYLOAD_REDACTED_THINKING = "redacted_thinking";
+	/**
+	 * The {@link OpaquePayload#kind()} of a redacted thinking block; the payload data is
+	 * the opaque block data, replayed unmodified.
+	 * @since 2.1.0
+	 */
+	public static final String PAYLOAD_REDACTED_THINKING = "redacted_thinking";
 
 	private final AnthropicClient anthropicClient;
 

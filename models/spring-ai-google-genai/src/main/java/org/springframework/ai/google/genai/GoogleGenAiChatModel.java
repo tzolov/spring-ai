@@ -168,11 +168,18 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 
 	private static final ChatModelObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultChatModelObservationConvention();
 
-	/** The {@link OpaquePayload#provider()} of parts produced by this model. */
-	static final String GOOGLE_PROVIDER = "google";
+	/**
+	 * The {@link OpaquePayload#provider()} of parts produced by this model.
+	 * @since 2.1.0
+	 */
+	public static final String GOOGLE_PROVIDER = "google";
 
-	/** The {@link OpaquePayload#kind()} of a Gemini thought signature. */
-	static final String PAYLOAD_THOUGHT_SIGNATURE = "thought_signature";
+	/**
+	 * The {@link OpaquePayload#kind()} of a Gemini thought signature; the payload data is
+	 * the Base64 encoded signature, replayed unmodified.
+	 * @since 2.1.0
+	 */
+	public static final String PAYLOAD_THOUGHT_SIGNATURE = "thought_signature";
 
 	/**
 	 * Deprecated metadata key holding all thought signatures of a response as a list of
