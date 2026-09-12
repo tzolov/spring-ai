@@ -69,17 +69,26 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.part.MediaPart;
+import org.springframework.ai.chat.messages.part.MessagePart;
+import org.springframework.ai.chat.messages.part.OpaquePayload;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
+import org.springframework.ai.chat.messages.part.UnknownPart;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.RateLimit;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.content.Media;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.util.MimeTypeUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -266,13 +275,17 @@ class AnthropicChatModelTests {
 		Prompt prompt = new Prompt("What's the weather?", options);
 
 		ChatResponse response = this.chatModel.call(prompt);
-		assertThat(response.getResults()).hasSize(2);
-		Generation thinkingGeneration = response.getResults().get(0);
-		assertThat(thinkingGeneration.getOutput().getText()).isEqualTo("thinking text");
-		assertThat(thinkingGeneration.getOutput().getMetadata()).containsEntry("signature", "thinking-signature");
-		Generation toolCallGeneration = response.getResults().get(1);
-		assertThat(toolCallGeneration.getOutput()).isInstanceOf(AnthropicChatModel.AnthropicAssistantMessage.class);
-		assertThat(toolCallGeneration.getOutput().getToolCalls()).hasSize(1);
+		assertThat(response.getResults()).hasSize(1);
+		AssistantMessage output = response.getResult().getOutput();
+		assertThat(output.getParts()).hasSize(2);
+		assertThat(output.getParts().get(0)).isInstanceOf(ReasoningPart.class);
+		ReasoningPart reasoning = (ReasoningPart) output.getParts().get(0);
+		assertThat(reasoning.text()).isEqualTo("thinking text");
+		assertThat(reasoning.redacted()).isFalse();
+		assertThat(reasoning.payload()).isEqualTo(new OpaquePayload("anthropic", "signature", "thinking-signature"));
+		assertThat(output.getParts().get(1)).isInstanceOf(ToolCallPart.class);
+		assertThat(output.getToolCalls()).hasSize(1);
+		assertThat(output.getText()).isNull();
 
 		ToolExecutionResult toolExecutionResult = ToolCallingManager.builder()
 			.build()
@@ -304,12 +317,14 @@ class AnthropicChatModelTests {
 		Prompt prompt = new Prompt("What's the weather?", options);
 
 		ChatResponse response = this.chatModel.call(prompt);
-		assertThat(response.getResults()).hasSize(2);
-		Generation redactedGeneration = response.getResults().get(0);
-		assertThat(redactedGeneration.getOutput().getMetadata()).containsEntry("data", "redacted-data");
-		Generation toolCallGeneration = response.getResults().get(1);
-		assertThat(toolCallGeneration.getOutput()).isInstanceOf(AnthropicChatModel.AnthropicAssistantMessage.class);
-		assertThat(toolCallGeneration.getOutput().getToolCalls()).hasSize(1);
+		assertThat(response.getResults()).hasSize(1);
+		AssistantMessage output = response.getResult().getOutput();
+		assertThat(output.getParts()).hasSize(2);
+		ReasoningPart redacted = (ReasoningPart) output.getParts().get(0);
+		assertThat(redacted.text()).isNull();
+		assertThat(redacted.redacted()).isTrue();
+		assertThat(redacted.payload()).isEqualTo(new OpaquePayload("anthropic", "redacted_thinking", "redacted-data"));
+		assertThat(output.getToolCalls()).hasSize(1);
 
 		ToolExecutionResult toolExecutionResult = ToolCallingManager.builder()
 			.build()
@@ -327,46 +342,119 @@ class AnthropicChatModelTests {
 	}
 
 	@Test
-	void thinkingOnlyResponseExposesThinkingGenerationAndKeepsReplayState() {
+	void thinkingAndTextResponseIsOneGenerationWithOrderedParts() {
 		Message mockResponse = createMockMessageWithThinkingAndText("thinking text", "thinking-signature",
 				"Final answer.");
 		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
 
 		ChatResponse response = this.chatModel.call(new Prompt("Explain it"));
 
-		assertThat(response.getResults()).hasSize(2);
-		Generation thinkingGeneration = response.getResults().get(0);
-		assertThat(thinkingGeneration.getOutput().getText()).isEqualTo("thinking text");
-		assertThat(thinkingGeneration.getOutput().getMetadata()).containsEntry("signature", "thinking-signature");
-
-		Generation finalGeneration = response.getResults().get(1);
-		assertThat(finalGeneration.getOutput().getText()).isEqualTo("Final answer.");
-		assertThat(finalGeneration.getOutput()).isInstanceOf(AnthropicChatModel.AnthropicAssistantMessage.class);
-		AnthropicChatModel.AnthropicAssistantMessage output = (AnthropicChatModel.AnthropicAssistantMessage) finalGeneration
-			.getOutput();
-		assertThat(output.hasThinkingContents()).isTrue();
+		assertThat(response.getResults()).hasSize(1);
+		AssistantMessage output = response.getResult().getOutput();
+		assertThat(output.getText()).isEqualTo("Final answer.");
+		assertThat(output.getParts()).hasSize(2);
+		assertThat(output.getParts().get(0)).isInstanceOf(ReasoningPart.class);
+		assertThat(output.getParts().get(1)).isEqualTo(TextPart.of("Final answer."));
+		assertThat(output.getReasoning()).hasSize(1);
+		assertThat(output.getReasoning().get(0).text()).isEqualTo("thinking text");
+		assertThat(output.getMetadata()).doesNotContainKey("signature").doesNotContainKey("anthropicThinkingContents");
 	}
 
 	@Test
-	@SuppressWarnings("unchecked")
+	void unsupportedBlockBecomesUnknownPart() {
+		ContentBlock serverToolUse = mock(ContentBlock.class);
+		given(serverToolUse.isServerToolUse()).willReturn(true);
+		given(serverToolUse._json())
+			.willReturn(Optional.of(JsonValue.from(Map.of("type", "server_tool_use", "id", "srvtoolu_01"))));
+		Message mockResponse = createMockMessage(List.of(serverToolUse, textContentBlock("Answer.")),
+				StopReason.END_TURN, 10L, 20L);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+
+		ChatResponse response = this.chatModel.call(new Prompt("Search it"));
+
+		AssistantMessage output = response.getResult().getOutput();
+		assertThat(output.getParts()).hasSize(2);
+		assertThat(output.getParts().get(0)).isInstanceOf(UnknownPart.class);
+		UnknownPart unknown = (UnknownPart) output.getParts().get(0);
+		assertThat(unknown.provider()).isEqualTo("anthropic");
+		assertThat(unknown.kind()).isEqualTo("server_tool_use");
+		assertThat(unknown.rawJson()).contains("srvtoolu_01");
+		assertThat(output.getText()).isEqualTo("Answer.");
+	}
+
+	@Test
+	void assistantPartsAreReplayedInPartOrder() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+
+		AssistantMessage history = AssistantMessage.builder()
+			.part(new ReasoningPart("think", null, false, new OpaquePayload("anthropic", "signature", "sig"), Map.of()))
+			.part(ToolCallPart.of(new AssistantMessage.ToolCall("toolu_1", "function", "getWeather", "{}")))
+			.part(TextPart.of("Checking."))
+			.build();
+		this.chatModel.call(new Prompt(List.of(new UserMessage("Weather?"), history, toolResult("toolu_1", "Sunny."),
+				new UserMessage("Thanks"))));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		List<ContentBlockParam> blocks = assistantBlockParams(captor.getValue());
+		assertThat(blocks).hasSize(3);
+		assertThat(blocks.get(0).isThinking()).isTrue();
+		assertThat(blocks.get(1).isToolUse()).isTrue();
+		assertThat(blocks.get(2).isText()).isTrue();
+		assertThat(blocks.get(2).asText().text()).isEqualTo("Checking.");
+	}
+
+	@Test
+	void foreignReasoningPartIsNotReplayed() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+
+		AssistantMessage history = AssistantMessage.builder()
+			.part(new ReasoningPart("openai thoughts", null, false,
+					new OpaquePayload("openai", "encrypted_content", "enc"), Map.of()))
+			.part(TextPart.of("Earlier answer."))
+			.build();
+		this.chatModel.call(new Prompt(List.of(new UserMessage("Hi"), history, new UserMessage("Again"))));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		MessageParam assistant = captor.getValue().messages().get(1);
+		assertThat(assistant.role()).isEqualTo(MessageParam.Role.ASSISTANT);
+		assertThat(assistant.content().isBlockParams()).isTrue();
+		List<ContentBlockParam> blocks = assistant.content().asBlockParams();
+		assertThat(blocks).hasSize(1);
+		assertThat(blocks.get(0).isText()).isTrue();
+		assertThat(blocks.get(0).asText().text()).isEqualTo("Earlier answer.");
+	}
+
+	@Test
+	void thinkingEnabledToolTurnWithoutAnthropicReasoningIsStillSent() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+		AnthropicChatOptions options = AnthropicChatOptions.builder()
+			.maxTokens(4096)
+			.thinkingEnabled(2048)
+			.toolCallbacks(List.of(new TestToolCallback("getWeather")))
+			.build();
+		Prompt prompt = new Prompt(toolCallingConversation(), options);
+
+		// The missing thinking block is logged as a warning; the API decides.
+		this.chatModel.call(prompt);
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		List<ContentBlockParam> blocks = assistantBlockParams(captor.getValue());
+		assertThat(blocks).hasSize(1);
+		assertThat(blocks.get(0).isToolUse()).isTrue();
+	}
+
+	@Test
 	void streamingThinkingBlockIsReplayedBeforeToolUseBlock() {
-		List<RawMessageStreamEvent> events = List.of(messageStartEvent(), thinkingStartEvent(),
-				thinkingDeltaEvent("thinking "), thinkingDeltaEvent("text"), signatureDeltaEvent("thinking-signature"),
-				contentBlockStopEvent(0), toolUseStartEvent("toolu_123", "getCurrentWeather"),
-				inputJsonDeltaEvent("{\"location\":\"Paris\"}"), contentBlockStopEvent(1),
-				messageDeltaEvent(StopReason.TOOL_USE));
-		StreamResponse<RawMessageStreamEvent> streamResponse = mock(StreamResponse.class);
-		given(streamResponse.stream()).willReturn(events.stream());
-
-		HttpResponseFor<StreamResponse<RawMessageStreamEvent>> rawResponse = mock(HttpResponseFor.class);
-		given(rawResponse.parse()).willReturn(streamResponse);
-		given(rawResponse.headers()).willReturn(Headers.builder().build());
-
-		given(this.anthropicClientAsync.messages()).willReturn(this.messageServiceAsync);
-		given(this.messageServiceAsync.withRawResponse()).willReturn(this.messageServiceAsyncWithRawResponse);
-		given(this.messageServiceAsyncWithRawResponse.createStreaming(any(MessageCreateParams.class),
-				any(RequestOptions.class)))
-			.willReturn(CompletableFuture.completedFuture(rawResponse));
+		givenStream(List.of(messageStartEvent(), thinkingStartEvent(), thinkingDeltaEvent("thinking "),
+				thinkingDeltaEvent("text"), signatureDeltaEvent("thinking-signature"), contentBlockStopEvent(0),
+				toolUseStartEvent("toolu_123", "getCurrentWeather"), inputJsonDeltaEvent("{\"location\":\"Paris\"}"),
+				contentBlockStopEvent(1), messageDeltaEvent(StopReason.TOOL_USE)));
 		Message finalResponse = createMockMessage("Done.", StopReason.END_TURN);
 		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(finalResponse);
 
@@ -376,7 +464,47 @@ class AnthropicChatModelTests {
 		Prompt prompt = new Prompt("What's the weather?", options);
 		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
 
-		new MessageAggregator().aggregate(this.chatModel.stream(prompt), aggregatedResponse::set).collectList().block();
+		List<ChatResponse> chunks = new MessageAggregator()
+			.aggregate(this.chatModel.stream(prompt), aggregatedResponse::set)
+			.collectList()
+			.block();
+
+		// Chunk contract: indexed partial parts, response id on every chunk, legacy keys
+		// kept
+		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.getMetadata().getId()).isEqualTo("msg_stream"));
+		ChatResponse firstThinkingChunk = chunks.get(0);
+		MessagePart thinkingDelta = firstThinkingChunk.getResult().getOutput().getParts().get(0);
+		assertThat(thinkingDelta).isInstanceOf(ReasoningPart.class);
+		assertThat(((ReasoningPart) thinkingDelta).text()).isEqualTo("thinking ");
+		assertThat(StreamingParts.partIndex(thinkingDelta)).isZero();
+		assertThat(StreamingParts.isPartial(thinkingDelta)).isTrue();
+		assertThat(firstThinkingChunk.getResult().getOutput().getText()).isNull();
+		assertThat(firstThinkingChunk.getResult().getOutput().getMetadata()).containsEntry("thinking", Boolean.TRUE);
+		ChatResponse signatureChunk = chunks.get(2);
+		MessagePart signatureDelta = signatureChunk.getResult().getOutput().getParts().get(0);
+		assertThat(signatureDelta.payload())
+			.isEqualTo(new OpaquePayload("anthropic", "signature", "thinking-signature"));
+		assertThat(StreamingParts.isPartial(signatureDelta)).isTrue();
+		assertThat(signatureChunk.getResult().getOutput().getMetadata()).containsEntry("signature",
+				"thinking-signature");
+		ChatResponse finalChunk = chunks.get(chunks.size() - 1);
+		assertThat(finalChunk.getResult().getMetadata().getFinishReason()).isEqualTo("tool_use");
+		assertThat(finalChunk.getResult().getOutput().getText()).isNull();
+		assertThat(finalChunk.getResult().getOutput().getParts()).hasSize(1);
+		MessagePart toolCallPart = finalChunk.getResult().getOutput().getParts().get(0);
+		assertThat(toolCallPart).isInstanceOf(ToolCallPart.class);
+		assertThat(StreamingParts.partIndex(toolCallPart)).isEqualTo(1);
+		assertThat(StreamingParts.isPartial(toolCallPart)).isFalse();
+
+		// Aggregated message: reasoning reconstructed from deltas, in block order,
+		// attributes stripped
+		AssistantMessage aggregated = aggregatedResponse.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(
+				new ReasoningPart("thinking text", null, false,
+						new OpaquePayload("anthropic", "signature", "thinking-signature"), Map.of()),
+				ToolCallPart.of(new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather",
+						"{\"location\":\"Paris\"}")));
+
 		ToolExecutionResult toolExecutionResult = ToolCallingManager.builder()
 			.build()
 			.executeToolCalls(prompt, aggregatedResponse.get());
@@ -391,6 +519,124 @@ class AnthropicChatModelTests {
 		assertThat(replayedAssistantBlocks.get(0).asThinking().thinking()).isEqualTo("thinking text");
 		assertThat(replayedAssistantBlocks.get(0).asThinking().signature()).isEqualTo("thinking-signature");
 		assertThat(replayedAssistantBlocks.get(1).isToolUse()).isTrue();
+	}
+
+	@Test
+	void streamingTextToolUseTextKeepsBlockOrder() {
+		givenStream(List.of(messageStartEvent(), textStartEvent(0), textDeltaEvent("Let me ", 0),
+				textDeltaEvent("check.", 0), contentBlockStopEvent(0),
+				toolUseStartEvent("toolu_123", "getCurrentWeather"), inputJsonDeltaEvent("{\"location\":\"Paris\"}"),
+				contentBlockStopEvent(1), textStartEvent(2), textDeltaEvent(" Done.", 2), contentBlockStopEvent(2),
+				messageDeltaEvent(StopReason.TOOL_USE)));
+
+		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
+		List<ChatResponse> chunks = new MessageAggregator()
+			.aggregate(this.chatModel.stream(new Prompt("What's the weather?")), aggregatedResponse::set)
+			.collectList()
+			.block();
+
+		MessagePart firstText = chunks.get(0).getResult().getOutput().getParts().get(0);
+		assertThat(firstText).isEqualTo(StreamingParts.partial(TextPart.of("Let me "), 0));
+		assertThat(chunks.get(0).getResult().getOutput().getText()).isEqualTo("Let me ");
+
+		AssistantMessage aggregated = aggregatedResponse.get().getResult().getOutput();
+		assertThat(aggregated.getText()).isEqualTo("Let me check. Done.");
+		assertThat(aggregated.getParts()).containsExactly(TextPart.of("Let me check."),
+				ToolCallPart.of(new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather",
+						"{\"location\":\"Paris\"}")),
+				TextPart.of(" Done."));
+	}
+
+	@Test
+	void streamingThinkingWithoutSignatureIsKeptAsText() {
+		givenStream(List.of(messageStartEvent(), thinkingStartEvent(), thinkingDeltaEvent("unsigned"),
+				contentBlockStopEvent(0), textStartEvent(1), textDeltaEvent("Answer.", 1), contentBlockStopEvent(1),
+				messageDeltaEvent(StopReason.END_TURN)));
+
+		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
+		new MessageAggregator().aggregate(this.chatModel.stream(new Prompt("Explain")), aggregatedResponse::set)
+			.blockLast();
+
+		AssistantMessage aggregated = aggregatedResponse.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(ReasoningPart.of("unsigned"), TextPart.of("Answer."));
+		assertThat(aggregated.getReasoning().get(0).payload()).isNull();
+	}
+
+	@Test
+	void streamingRedactedThinkingIsCompletePart() {
+		givenStream(List.of(messageStartEvent(), redactedThinkingStartEvent("redacted-data", 0),
+				contentBlockStopEvent(0), textStartEvent(1), textDeltaEvent("Answer.", 1), contentBlockStopEvent(1),
+				messageDeltaEvent(StopReason.END_TURN)));
+
+		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
+		List<ChatResponse> chunks = new MessageAggregator()
+			.aggregate(this.chatModel.stream(new Prompt("Explain")), aggregatedResponse::set)
+			.collectList()
+			.block();
+
+		MessagePart redactedChunkPart = chunks.get(0).getResult().getOutput().getParts().get(0);
+		assertThat(StreamingParts.isPartial(redactedChunkPart)).isFalse();
+		assertThat(StreamingParts.partIndex(redactedChunkPart)).isZero();
+		assertThat(chunks.get(0).getResult().getOutput().getMetadata()).containsEntry("data", "redacted-data");
+
+		AssistantMessage aggregated = aggregatedResponse.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(
+				new ReasoningPart(null, null, true,
+						new OpaquePayload("anthropic", "redacted_thinking", "redacted-data"), Map.of()),
+				TextPart.of("Answer."));
+	}
+
+	@Test
+	void assistantTurnWithNothingReplayableIsLeftOut() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+
+		AssistantMessage foreignOnly = AssistantMessage.builder()
+			.part(new ReasoningPart("openai thoughts", null, false,
+					new OpaquePayload("openai", "encrypted_content", "enc"), Map.of()))
+			.build();
+		this.chatModel.call(new Prompt(List.of(new UserMessage("Hi"), foreignOnly, new UserMessage("Again"))));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		assertThat(captor.getValue().messages()).hasSize(2);
+		assertThat(captor.getValue().messages())
+			.allSatisfy(message -> assertThat(message.role()).isEqualTo(MessageParam.Role.USER));
+	}
+
+	@Test
+	void assistantMediaIsNotReplayed() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+
+		Media image = Media.builder().mimeType(MimeTypeUtils.IMAGE_PNG).data(new byte[] { 1, 2, 3 }).build();
+		AssistantMessage history = AssistantMessage.builder()
+			.part(TextPart.of("Here is the chart."))
+			.part(MediaPart.of(image))
+			.build();
+		this.chatModel.call(new Prompt(List.of(new UserMessage("Chart?"), history, new UserMessage("Thanks"))));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		List<ContentBlockParam> blocks = assistantBlockParams(captor.getValue());
+		assertThat(blocks).hasSize(1);
+		assertThat(blocks.get(0).isText()).isTrue();
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenStream(List<RawMessageStreamEvent> events) {
+		StreamResponse<RawMessageStreamEvent> streamResponse = mock(StreamResponse.class);
+		given(streamResponse.stream()).willReturn(events.stream());
+
+		HttpResponseFor<StreamResponse<RawMessageStreamEvent>> rawResponse = mock(HttpResponseFor.class);
+		given(rawResponse.parse()).willReturn(streamResponse);
+		given(rawResponse.headers()).willReturn(Headers.builder().build());
+
+		given(this.anthropicClientAsync.messages()).willReturn(this.messageServiceAsync);
+		given(this.messageServiceAsync.withRawResponse()).willReturn(this.messageServiceAsyncWithRawResponse);
+		given(this.messageServiceAsyncWithRawResponse.createStreaming(any(MessageCreateParams.class),
+				any(RequestOptions.class)))
+			.willReturn(CompletableFuture.completedFuture(rawResponse));
 	}
 
 	@Test
@@ -723,6 +969,16 @@ class AnthropicChatModelTests {
 		return message;
 	}
 
+	private ContentBlock textContentBlock(String text) {
+		TextBlock textBlock = mock(TextBlock.class);
+		given(textBlock.text()).willReturn(text);
+
+		ContentBlock contentBlock = mock(ContentBlock.class);
+		given(contentBlock.isText()).willReturn(true);
+		given(contentBlock.asText()).willReturn(textBlock);
+		return contentBlock;
+	}
+
 	private Message createMockMessage(String text, StopReason stopReason) {
 		TextBlock textBlock = mock(TextBlock.class);
 		given(textBlock.text()).willReturn(text);
@@ -797,6 +1053,24 @@ class AnthropicChatModelTests {
 
 		return RawMessageStreamEvent
 			.ofContentBlockStart(RawContentBlockStartEvent.builder().contentBlock(toolUseBlock).index(1L).build());
+	}
+
+	private RawMessageStreamEvent textStartEvent(long index) {
+		TextBlock textBlock = mock(TextBlock.class);
+		return RawMessageStreamEvent
+			.ofContentBlockStart(RawContentBlockStartEvent.builder().contentBlock(textBlock).index(index).build());
+	}
+
+	private RawMessageStreamEvent redactedThinkingStartEvent(String data, long index) {
+		RedactedThinkingBlock redactedBlock = mock(RedactedThinkingBlock.class);
+		given(redactedBlock.data()).willReturn(data);
+		return RawMessageStreamEvent
+			.ofContentBlockStart(RawContentBlockStartEvent.builder().contentBlock(redactedBlock).index(index).build());
+	}
+
+	private RawMessageStreamEvent textDeltaEvent(String text, long index) {
+		return RawMessageStreamEvent
+			.ofContentBlockDelta(RawContentBlockDeltaEvent.builder().textDelta(text).index(index).build());
 	}
 
 	private RawMessageStreamEvent thinkingDeltaEvent(String thinking) {
