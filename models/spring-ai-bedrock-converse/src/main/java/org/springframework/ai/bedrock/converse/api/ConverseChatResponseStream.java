@@ -61,12 +61,13 @@ import org.springframework.util.Assert;
  * stream.
  * <p>
  * Each content block delta is emitted as a partial {@link MessagePart} indexed by the
- * Converse content block index: text and reasoning deltas, the reasoning signature and
- * redacted content as payload-only deltas, and the started tool use and each of its input
- * deltas as partial {@link ToolCallPart}s that are not tool calls yet. The tool-use input
- * is also buffered and emitted as complete {@link ToolCallPart}s on the final chunk,
- * exactly as before, so {@link org.springframework.ai.chat.model.MessageAggregator}
- * rebuilds the message from the parts and tool execution still happens on that chunk.
+ * Converse content block index: text and reasoning deltas, and the reasoning signature
+ * and redacted content as payload-only deltas. The tool-use input is buffered and emitted
+ * as complete {@link ToolCallPart}s on the final chunk, exactly as before, so
+ * {@link org.springframework.ai.chat.model.MessageAggregator} rebuilds the message from
+ * the parts and tool execution still happens on that chunk. When tool-call delta
+ * streaming is enabled, the started tool use and each of its input deltas are also
+ * emitted as partial {@link ToolCallPart}s that are not tool calls yet.
  *
  * @author Jared Rufer
  * @author Christian Tzolov
@@ -99,14 +100,29 @@ public class ConverseChatResponseStream implements ConverseStreamResponseHandler
 
 	private final ConverseStreamRequest converseStreamRequest;
 
+	private final boolean streamToolCallDeltas;
+
 	public ConverseChatResponseStream(BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient,
 			ConverseStreamRequest converseStreamRequest, @Nullable Usage accumulatedUsage) {
+		this(bedrockRuntimeAsyncClient, converseStreamRequest, accumulatedUsage, false);
+	}
+
+	/**
+	 * Creates a stream, optionally emitting the tool-use start and input deltas as
+	 * partial {@link ToolCallPart} chunks before the complete calls on the final chunk.
+	 * @param streamToolCallDeltas whether to emit tool-call delta chunks
+	 * @since 2.1.0
+	 */
+	public ConverseChatResponseStream(BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient,
+			ConverseStreamRequest converseStreamRequest, @Nullable Usage accumulatedUsage,
+			boolean streamToolCallDeltas) {
 
 		Assert.notNull(bedrockRuntimeAsyncClient, "'bedrockRuntimeAsyncClient' must not be null");
 		Assert.notNull(converseStreamRequest, "'converseStreamRequest' must not be null");
 
 		this.bedrockRuntimeAsyncClient = bedrockRuntimeAsyncClient;
 		this.converseStreamRequest = converseStreamRequest;
+		this.streamToolCallDeltas = streamToolCallDeltas;
 		if (accumulatedUsage != null) {
 			this.totalTokens.set(accumulatedUsage.getTotalTokens());
 			this.promptTokens.set(accumulatedUsage.getPromptTokens());
@@ -202,13 +218,14 @@ public class ConverseChatResponseStream implements ConverseStreamResponseHandler
 	}
 
 	/**
-	 * Emits a partial {@link ToolCallPart} holding only the given input delta. A partial
-	 * part is not a tool call (see {@link AssistantMessage#getToolCalls()}), so the chunk
-	 * cannot trigger tool execution; the complete call follows on the final chunk.
+	 * Emits a partial {@link ToolCallPart} holding only the given input delta, when
+	 * tool-call delta streaming is enabled. A partial part is not a tool call (see
+	 * {@link AssistantMessage#getToolCalls()}), so the chunk cannot trigger tool
+	 * execution; the complete call follows on the final chunk.
 	 */
 	private void emitToolCallDelta(int contentBlockIndex, @Nullable String id, @Nullable String name,
 			String inputDelta) {
-		if (id == null || name == null) {
+		if (!this.streamToolCallDeltas || id == null || name == null) {
 			return;
 		}
 		ToolCallPart delta = ToolCallPart.of(new AssistantMessage.ToolCall(id, "function", name, inputDelta));

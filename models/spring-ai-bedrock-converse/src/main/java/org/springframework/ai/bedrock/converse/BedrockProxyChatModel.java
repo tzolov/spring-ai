@@ -197,6 +197,8 @@ public class BedrockProxyChatModel implements ChatModel {
 
 	private final MediaFetcher mediaFetcher;
 
+	private final boolean streamToolCallDeltas;
+
 	public BedrockProxyChatModel(BedrockRuntimeClient bedrockRuntimeClient,
 			BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient, BedrockChatOptions options,
 			ObservationRegistry observationRegistry, ToolCallingManager toolCallingManager) {
@@ -207,6 +209,19 @@ public class BedrockProxyChatModel implements ChatModel {
 	public BedrockProxyChatModel(BedrockRuntimeClient bedrockRuntimeClient,
 			BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient, BedrockChatOptions options,
 			ObservationRegistry observationRegistry, ToolCallingManager toolCallingManager, MediaFetcher mediaFetcher) {
+		this(bedrockRuntimeClient, bedrockRuntimeAsyncClient, options, observationRegistry, toolCallingManager,
+				mediaFetcher, false);
+	}
+
+	/**
+	 * Creates a model, optionally streaming tool-call deltas.
+	 * @param streamToolCallDeltas see {@link Builder#streamToolCallDeltas(boolean)}
+	 * @since 2.1.0
+	 */
+	public BedrockProxyChatModel(BedrockRuntimeClient bedrockRuntimeClient,
+			BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient, BedrockChatOptions options,
+			ObservationRegistry observationRegistry, ToolCallingManager toolCallingManager, MediaFetcher mediaFetcher,
+			boolean streamToolCallDeltas) {
 
 		Assert.notNull(bedrockRuntimeClient, "bedrockRuntimeClient must not be null");
 		Assert.notNull(bedrockRuntimeAsyncClient, "bedrockRuntimeAsyncClient must not be null");
@@ -219,6 +234,7 @@ public class BedrockProxyChatModel implements ChatModel {
 		this.observationRegistry = observationRegistry;
 		this.toolCallingManager = toolCallingManager;
 		this.mediaFetcher = mediaFetcher;
+		this.streamToolCallDeltas = streamToolCallDeltas;
 	}
 
 	/**
@@ -823,7 +839,7 @@ public class BedrockProxyChatModel implements ChatModel {
 			}
 
 			Flux<ChatResponse> chatResponses = new ConverseChatResponseStream(this.bedrockRuntimeAsyncClient,
-					converseStreamRequest, accumulatedUsage)
+					converseStreamRequest, accumulatedUsage, this.streamToolCallDeltas)
 				.stream();
 
 			ChatOptions options = prompt.getOptions();
@@ -892,6 +908,8 @@ public class BedrockProxyChatModel implements ChatModel {
 		private @Nullable BedrockRuntimeClient bedrockRuntimeClient;
 
 		private @Nullable BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient;
+
+		private boolean streamToolCallDeltas;
 
 		private Builder() {
 		}
@@ -974,6 +992,22 @@ public class BedrockProxyChatModel implements ChatModel {
 			return this;
 		}
 
+		/**
+		 * Whether to emit each streamed tool-use start and input delta as a chunk holding
+		 * a partial {@link org.springframework.ai.chat.messages.part.ToolCallPart} before
+		 * the complete call is emitted on the final chunk. Off by default, so the stream
+		 * only carries the complete calls once, as it always has. Partial parts are not
+		 * tool calls: {@code getToolCalls()} ignores them and {@code ChatClient} hides
+		 * those chunks; they are only visible on the raw {@code ChatModel.stream()}.
+		 * @param streamToolCallDeltas whether to stream tool-call deltas
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public Builder streamToolCallDeltas(boolean streamToolCallDeltas) {
+			this.streamToolCallDeltas = streamToolCallDeltas;
+			return this;
+		}
+
 		public Builder bedrockRuntimeAsyncClient(@Nullable BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient) {
 			this.bedrockRuntimeAsyncClient = bedrockRuntimeAsyncClient;
 			return this;
@@ -1017,7 +1051,8 @@ public class BedrockProxyChatModel implements ChatModel {
 					: ToolCallingManager.builder().observationRegistry(this.observationRegistry).build();
 
 			BedrockProxyChatModel bedrockProxyChatModel = new BedrockProxyChatModel(this.bedrockRuntimeClient,
-					this.bedrockRuntimeAsyncClient, this.options, this.observationRegistry, this.toolCallingManager);
+					this.bedrockRuntimeAsyncClient, this.options, this.observationRegistry, this.toolCallingManager,
+					new MediaFetcher(), this.streamToolCallDeltas);
 
 			if (this.customObservationConvention != null) {
 				bedrockProxyChatModel.setObservationConvention(this.customObservationConvention);

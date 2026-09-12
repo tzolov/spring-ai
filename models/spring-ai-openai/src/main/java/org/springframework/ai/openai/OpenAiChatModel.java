@@ -182,6 +182,8 @@ public final class OpenAiChatModel implements ChatModel {
 
 	private final ToolCallingManager toolCallingManager;
 
+	private final boolean streamToolCallDeltas;
+
 	private ChatModelObservationConvention observationConvention = DEFAULT_OBSERVATION_CONVENTION;
 
 	/**
@@ -193,12 +195,14 @@ public final class OpenAiChatModel implements ChatModel {
 	}
 
 	private OpenAiChatModel(OpenAIClient openAiClient, OpenAIClientAsync openAiClientAsync, OpenAiChatOptions options,
-			ObservationRegistry observationRegistry, ToolCallingManager toolCallingManager) {
+			ObservationRegistry observationRegistry, ToolCallingManager toolCallingManager,
+			boolean streamToolCallDeltas) {
 		this.openAiClient = openAiClient;
 		this.openAiClientAsync = openAiClientAsync;
 		this.options = options;
 		this.observationRegistry = observationRegistry;
 		this.toolCallingManager = toolCallingManager;
+		this.streamToolCallDeltas = streamToolCallDeltas;
 	}
 
 	/**
@@ -365,7 +369,11 @@ public final class OpenAiChatModel implements ChatModel {
 				}
 				toolCallBuffer.add(chunk);
 				List<ChatResponse> emitted = new ArrayList<>(2);
-				ChatResponse deltaResponse = toolCallDeltaResponse(chunk, roleMap, indexerMap);
+				// Argument deltas are emitted as partial ToolCallPart chunks only when
+				// opted
+				// in; by default the stream carries the complete call once, as before.
+				ChatResponse deltaResponse = this.streamToolCallDeltas
+						? toolCallDeltaResponse(chunk, roleMap, indexerMap) : null;
 				if (deltaResponse != null) {
 					emitted.add(deltaResponse);
 				}
@@ -1744,7 +1752,26 @@ public final class OpenAiChatModel implements ChatModel {
 
 		private List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers = new ArrayList<>();
 
+		private boolean streamToolCallDeltas;
+
 		private Builder() {
+		}
+
+		/**
+		 * Whether to emit each streamed tool-call argument delta as a chunk holding a
+		 * partial {@link ToolCallPart} before the complete call is emitted. Off by
+		 * default, so the stream only carries the complete call once its arguments are
+		 * done, as it always has. Partial parts are not tool calls:
+		 * {@link AssistantMessage#getToolCalls()} ignores them and {@code ChatClient}
+		 * hides those chunks; they are only visible on the raw
+		 * {@code ChatModel.stream()}.
+		 * @param streamToolCallDeltas {@code true} to emit the argument delta chunks
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public Builder streamToolCallDeltas(boolean streamToolCallDeltas) {
+			this.streamToolCallDeltas = streamToolCallDeltas;
+			return this;
 		}
 
 		/**
@@ -1869,7 +1896,7 @@ public final class OpenAiChatModel implements ChatModel {
 					ToolCallingManager.builder().observationRegistry(resolvedObservationRegistry).build());
 
 			return new OpenAiChatModel(resolvedClient, resolvedClientAsync, resolvedOptions,
-					resolvedObservationRegistry, resolvedToolCallingManager);
+					resolvedObservationRegistry, resolvedToolCallingManager, this.streamToolCallDeltas);
 		}
 
 	}

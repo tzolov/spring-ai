@@ -818,10 +818,17 @@ System.out.println("Answer: " + message.getText());
 A response is a single `Generation` holding all of its parts, so `getResult()` returns the reasoning, the text and the tool calls together.
 
 When streaming, each reasoning delta arrives as a partial `ReasoningPart` and each text delta as a partial `TextPart`, indexed by the Converse content block, so they can be appended as they arrive.
-Tool-use input deltas arrive the same way, as partial `ToolCallPart`s holding only that fragment of the JSON input.
+By default the tool-use input is buffered and the complete tool calls arrive once, on the final chunk of the response, exactly as before.
+To also receive the tool-use start and each input delta as a chunk holding a partial `ToolCallPart`, enable it on the builder:
+
+[source,java]
+----
+BedrockProxyChatModel.builder().streamToolCallDeltas(true).build();
+----
+
 A partial `ToolCallPart` is not a tool call yet: `getToolCalls()` and `hasToolCalls()` ignore it, so nothing executes on it.
 The delta chunks are only visible on the raw `ChatModel.stream()`; `ChatClient` hides every chunk of a tool round, argument deltas included, because it executes the tools itself.
-The complete tool calls still arrive in the final chunk of the response, exactly as before.
+The complete tool calls still arrive in the final chunk with the flag on as well.
 The signature closes the reasoning block as a payload-only delta.
 The aggregated response produced by `ChatClient` or `MessageAggregator` holds the complete signed `ReasoningPart` followed by the complete `TextPart` and the tool calls.
 

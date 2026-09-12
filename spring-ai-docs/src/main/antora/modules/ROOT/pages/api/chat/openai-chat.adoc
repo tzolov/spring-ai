@@ -989,7 +989,15 @@ responseFlux.subscribe(chunk -> {
 
 The aggregated response produced by `ChatClient` or `MessageAggregator` contains the complete `ReasoningPart` followed by the complete `TextPart`.
 
-Tool-call argument deltas are streamed the same way, as partial `ToolCallPart`s carrying only that fragment of the JSON arguments.
+By default the streamed tool calls arrive once, complete, in a single chunk after their arguments are done, exactly as before.
+To also receive each tool-call argument delta as it arrives, opt in on the builder:
+
+[source,java]
+----
+OpenAiChatModel chatModel = OpenAiChatModel.builder().openAiClient(client).streamToolCallDeltas(true).build();
+----
+
+Each delta is then emitted as a chunk holding a partial `ToolCallPart` that carries only that fragment of the JSON arguments, followed by the complete call as before.
 A partial `ToolCallPart` is not a tool call yet: `getToolCalls()` and `hasToolCalls()` ignore it, so nothing executes on it.
 The delta chunks are only visible on the raw `ChatModel.stream()`; `ChatClient` hides every chunk of a tool round, argument deltas included, because it executes the tools itself.
 The complete tool calls still arrive in one chunk once the arguments are done, exactly as before.

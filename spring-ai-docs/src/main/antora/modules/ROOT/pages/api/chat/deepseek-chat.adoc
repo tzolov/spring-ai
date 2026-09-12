@@ -308,10 +308,17 @@ chatModel.stream(new Prompt("9.11 and 9.8, which is greater?")).subscribe(chunk 
 The aggregated response produced by `ChatClient` or `MessageAggregator` contains the complete `ReasoningPart` followed by the complete `TextPart`.
 The deprecated `reasoningContent` metadata key on a streamed chunk holds the reasoning accumulated so far, not the delta, so it must not be appended.
 
-Tool-call argument deltas are streamed the same way, as partial `ToolCallPart`s carrying only that fragment of the JSON arguments.
+By default the stream carries a tool call once, in one chunk, when its arguments are complete, exactly as before.
+Tool-call argument deltas can be streamed the same way as text, as partial `ToolCallPart`s carrying only that fragment of the JSON arguments, by opting in on the model builder:
+
+[source,java]
+----
+DeepSeekChatModel.builder().deepSeekApi(api).streamToolCallDeltas(true).build();
+----
+
 A partial `ToolCallPart` is not a tool call yet: `getToolCalls()` and `hasToolCalls()` ignore it, so nothing executes on it.
 The delta chunks are only visible on the raw `ChatModel.stream()`; `ChatClient` hides every chunk of a tool round, argument deltas included, because it executes the tools itself.
-The complete tool calls still arrive in one chunk once the arguments are done, exactly as before.
+The complete tool call still arrives in one chunk once the arguments are done, whether or not the deltas are streamed.
 The low-level `DeepSeekApi.chatCompletionStream` keeps merging the chunks of a tool call for direct users; `chatCompletionStreamRaw` returns them unmerged.
 
 === Thinking Mode

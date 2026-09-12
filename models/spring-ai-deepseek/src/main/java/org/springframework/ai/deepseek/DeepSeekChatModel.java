@@ -138,6 +138,12 @@ public class DeepSeekChatModel implements ChatModel {
 	private final ToolCallingManager toolCallingManager;
 
 	/**
+	 * Whether streamed tool-call argument deltas are emitted as chunks holding partial
+	 * {@link ToolCallPart}s before the complete call. Off by default.
+	 */
+	private final boolean streamToolCallDeltas;
+
+	/**
 	 * Conventions to use for generating observations.
 	 */
 	private ChatModelObservationConvention observationConvention = DEFAULT_OBSERVATION_CONVENTION;
@@ -145,6 +151,24 @@ public class DeepSeekChatModel implements ChatModel {
 	public DeepSeekChatModel(DeepSeekApi deepSeekApi, DeepSeekChatOptions options,
 			ToolCallingManager toolCallingManager, RetryTemplate retryTemplate,
 			ObservationRegistry observationRegistry) {
+		this(deepSeekApi, options, toolCallingManager, retryTemplate, observationRegistry, false);
+	}
+
+	/**
+	 * Creates a chat model.
+	 * @param deepSeekApi the DeepSeek API client
+	 * @param options the default chat options
+	 * @param toolCallingManager the tool calling manager
+	 * @param retryTemplate the retry template
+	 * @param observationRegistry the observation registry
+	 * @param streamToolCallDeltas whether to emit streamed tool-call argument deltas as
+	 * chunks holding partial {@link ToolCallPart}s, see
+	 * {@link Builder#streamToolCallDeltas(boolean)}
+	 * @since 2.1.0
+	 */
+	public DeepSeekChatModel(DeepSeekApi deepSeekApi, DeepSeekChatOptions options,
+			ToolCallingManager toolCallingManager, RetryTemplate retryTemplate, ObservationRegistry observationRegistry,
+			boolean streamToolCallDeltas) {
 		Assert.notNull(deepSeekApi, "deepSeekApi cannot be null");
 		Assert.notNull(options, "options cannot be null");
 		Assert.notNull(toolCallingManager, "toolCallingManager cannot be null");
@@ -155,6 +179,7 @@ public class DeepSeekChatModel implements ChatModel {
 		this.toolCallingManager = toolCallingManager;
 		this.retryTemplate = retryTemplate;
 		this.observationRegistry = observationRegistry;
+		this.streamToolCallDeltas = streamToolCallDeltas;
 	}
 
 	@Override
@@ -291,7 +316,10 @@ public class DeepSeekChatModel implements ChatModel {
 							reasoningMap, indexerMap));
 				}
 				toolCallBuffer.add(chunk);
-				ChatResponse deltaResponse = toolCallDeltaResponse(chunk, roleMap, indexerMap);
+				// Argument deltas are emitted only on request; by default the stream
+				// carries the complete call once, as it always has.
+				ChatResponse deltaResponse = this.streamToolCallDeltas
+						? toolCallDeltaResponse(chunk, roleMap, indexerMap) : null;
 				Flux<ChatResponse> emitted = deltaResponse != null ? Flux.just(deltaResponse) : Flux.empty();
 				if (this.chunkMerger.isStreamingToolFunctionCallFinish(chunk)) {
 					emitted = emitted.concatWith(flushToolCallBuffer.get());
@@ -792,6 +820,8 @@ public class DeepSeekChatModel implements ChatModel {
 
 		private ObservationRegistry observationRegistry = ObservationRegistry.NOOP;
 
+		private boolean streamToolCallDeltas;
+
 		private Builder() {
 		}
 
@@ -826,11 +856,28 @@ public class DeepSeekChatModel implements ChatModel {
 			return this;
 		}
 
+		/**
+		 * Whether to emit each streamed tool-call argument delta as a chunk holding a
+		 * partial {@link ToolCallPart} before the complete call is emitted. Off by
+		 * default, so the stream only carries the complete call once its arguments are
+		 * done, as it always has. Partial parts are not tool calls:
+		 * {@link AssistantMessage#getToolCalls()} ignores them and {@code ChatClient}
+		 * hides those chunks; they are only visible on the raw
+		 * {@code ChatModel.stream()}.
+		 * @param streamToolCallDeltas whether to emit the argument deltas
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public Builder streamToolCallDeltas(boolean streamToolCallDeltas) {
+			this.streamToolCallDeltas = streamToolCallDeltas;
+			return this;
+		}
+
 		public DeepSeekChatModel build() {
 			Assert.state(this.deepSeekApi != null, "DeepSeekApi must not be null");
 			return new DeepSeekChatModel(this.deepSeekApi, this.options,
 					Objects.requireNonNullElse(this.toolCallingManager, DEFAULT_TOOL_CALLING_MANAGER),
-					this.retryTemplate, this.observationRegistry);
+					this.retryTemplate, this.observationRegistry, this.streamToolCallDeltas);
 		}
 
 	}

@@ -211,6 +211,8 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 
 	private final ToolCallingManager toolCallingManager;
 
+	private final boolean streamToolCallDeltas;
+
 	private ChatModelObservationConvention observationConvention = DEFAULT_OBSERVATION_CONVENTION;
 
 	/**
@@ -228,8 +230,9 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			@Nullable AnthropicClientAsync anthropicClientAsync, @Nullable AnthropicChatOptions options,
 			@Nullable ToolCallingManager toolCallingManager, @Nullable ObservationRegistry observationRegistry,
 			@Nullable MeterRegistry meterRegistry, @Nullable ExecutorService dispatcherExecutor,
-			List<AnthropicHttpClientBuilderCustomizer> httpClientCustomizers) {
+			List<AnthropicHttpClientBuilderCustomizer> httpClientCustomizers, boolean streamToolCallDeltas) {
 
+		this.streamToolCallDeltas = streamToolCallDeltas;
 		if (options == null) {
 			this.options = AnthropicChatOptions.builder().build();
 		}
@@ -424,6 +427,9 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			if (contentBlock.toolUse().isPresent()) {
 				var toolUseBlock = contentBlock.asToolUse();
 				streamingState.startToolUse(index, toolUseBlock.id(), toolUseBlock.name());
+				if (!this.streamToolCallDeltas) {
+					return null;
+				}
 				ToolCallPart startedPart = streamingState.toolCallDelta(index, "");
 				return startedPart != null
 						? partChunk(streamingState, StreamingParts.partial(startedPart, index), Map.of()) : null;
@@ -466,6 +472,9 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			if (delta.inputJson().isPresent()) {
 				String partialJson = delta.asInputJson().partialJson();
 				streamingState.appendToolJson(index, partialJson);
+				if (!this.streamToolCallDeltas) {
+					return null;
+				}
 				// A partial ToolCallPart is not a tool call yet (AssistantMessage skips
 				// it in getToolCalls()), so the chunk cannot trigger execution.
 				ToolCallPart deltaPart = streamingState.toolCallDelta(index, partialJson);
@@ -1827,6 +1836,8 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 
 		private @Nullable ExecutorService dispatcherExecutor;
 
+		private boolean streamToolCallDeltas;
+
 		private List<AnthropicHttpClientBuilderCustomizer> httpClientCustomizers = new ArrayList<>();
 
 		private Builder() {
@@ -1964,7 +1975,24 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			}
 			return new AnthropicChatModel(this.anthropicClient, this.anthropicClientAsync, this.options,
 					this.toolCallingManager, this.observationRegistry, this.meterRegistry, this.dispatcherExecutor,
-					this.httpClientCustomizers);
+					this.httpClientCustomizers, this.streamToolCallDeltas);
+		}
+
+		/**
+		 * Whether to emit each streamed tool-use start and argument delta as a chunk
+		 * holding a partial {@link ToolCallPart} before the complete call is emitted on
+		 * the final chunk. Off by default, so the stream only carries the complete calls
+		 * once their arguments are done, as it always has. Partial parts are not tool
+		 * calls: {@link AssistantMessage#getToolCalls()} ignores them and the ChatClient
+		 * hides those chunks; they are only visible on the raw
+		 * {@code ChatModel.stream()}.
+		 * @param streamToolCallDeltas {@code true} to stream the argument deltas
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public Builder streamToolCallDeltas(boolean streamToolCallDeltas) {
+			this.streamToolCallDeltas = streamToolCallDeltas;
+			return this;
 		}
 
 	}

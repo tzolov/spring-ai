@@ -551,7 +551,7 @@ class AnthropicChatModelTests {
 	}
 
 	@Test
-	void streamingToolUseEmitsArgumentDeltasAsPartialPartsBeforeTheCompleteCall() {
+	void streamingToolUseCarriesOnlyTheCompleteCallByDefault() {
 		givenStream(List.of(messageStartEvent(), textStartEvent(0), textDeltaEvent("Checking.", 0),
 				contentBlockStopEvent(0), toolUseStartEvent("toolu_123", "getCurrentWeather"),
 				inputJsonDeltaEvent("{\"location\":"), inputJsonDeltaEvent("\"Paris\"}"), contentBlockStopEvent(1),
@@ -560,6 +560,38 @@ class AnthropicChatModelTests {
 		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
 		List<ChatResponse> chunks = new MessageAggregator()
 			.aggregate(this.chatModel.stream(new Prompt("What's the weather?")), aggregatedResponse::set)
+			.collectList()
+			.block();
+
+		// The stream shape of before the parts model: the text delta and the final
+		// chunk with the complete call, no argument-delta chunks
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks.get(0).getResult().getOutput().getText()).isEqualTo("Checking.");
+		AssistantMessage.ToolCall complete = new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather",
+				"{\"location\":\"Paris\"}");
+		assertThat(chunks.get(1).getResult().getOutput().getToolCalls()).containsExactly(complete);
+		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.getResult().getOutput().getParts())
+			.noneMatch(part -> part instanceof ToolCallPart && StreamingParts.isPartial(part)));
+		assertThat(aggregatedResponse.get().getResult().getOutput().getParts())
+			.containsExactly(TextPart.of("Checking."), ToolCallPart.of(complete));
+	}
+
+	@Test
+	void streamingToolUseEmitsArgumentDeltasAsPartialPartsBeforeTheCompleteCallWhenEnabled() {
+		givenStream(List.of(messageStartEvent(), textStartEvent(0), textDeltaEvent("Checking.", 0),
+				contentBlockStopEvent(0), toolUseStartEvent("toolu_123", "getCurrentWeather"),
+				inputJsonDeltaEvent("{\"location\":"), inputJsonDeltaEvent("\"Paris\"}"), contentBlockStopEvent(1),
+				messageDeltaEvent(StopReason.TOOL_USE)));
+		AnthropicChatModel deltaModel = AnthropicChatModel.builder()
+			.anthropicClient(this.anthropicClient)
+			.anthropicClientAsync(this.anthropicClientAsync)
+			.options(AnthropicChatOptions.builder().model(Model.CLAUDE_SONNET_4_5).maxTokens(1024).build())
+			.streamToolCallDeltas(true)
+			.build();
+
+		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
+		List<ChatResponse> chunks = new MessageAggregator()
+			.aggregate(deltaModel.stream(new Prompt("What's the weather?")), aggregatedResponse::set)
 			.collectList()
 			.block();
 

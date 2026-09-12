@@ -241,27 +241,17 @@ class BedrockProxyChatModelMessagePartsTests {
 
 	@Test
 	void streamingEmitsIndexedPartsAndAggregatesReasoningTextAndToolCall() {
-		List<ConverseStreamOutput> events = List.of(reasoningDelta(0, "Think "), reasoningDelta(0, "hard."),
-				signatureDelta(0, SIGNATURE),
-				ConverseStreamOutput.contentBlockStopBuilder().contentBlockIndex(0).build(), textDelta(1, "Let me "),
-				textDelta(1, "check."), ConverseStreamOutput.contentBlockStopBuilder().contentBlockIndex(1).build(),
-				ConverseStreamOutput.contentBlockStartBuilder()
-					.contentBlockIndex(2)
-					.start(ContentBlockStart.builder()
-						.toolUse(ToolUseBlockStart.builder().toolUseId("tooluse_123").name("getCurrentWeather").build())
-						.build())
-					.build(),
-				toolUseDelta(2, "{\"location\":"), toolUseDelta(2, "\"Paris\"}"),
-				ConverseStreamOutput.contentBlockStopBuilder().contentBlockIndex(2).build(),
-				ConverseStreamOutput.messageStopBuilder().stopReason(StopReason.TOOL_USE).build(),
-				ConverseStreamOutput.metadataBuilder()
-					.usage(TokenUsage.builder().inputTokens(10).outputTokens(20).totalTokens(30).build())
-					.build());
-		givenStream(events);
+		givenStream(reasoningTextAndToolUseEvents());
+		// Tool-call deltas are opt-in
+		BedrockProxyChatModel deltaStreamingModel = BedrockProxyChatModel.builder()
+			.bedrockRuntimeClient(this.bedrockRuntimeClient)
+			.bedrockRuntimeAsyncClient(this.bedrockRuntimeAsyncClient)
+			.streamToolCallDeltas(true)
+			.build();
 
 		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
 		List<ChatResponse> chunks = new MessageAggregator()
-			.aggregate(this.chatModel.stream(new Prompt("Weather in Paris?")), aggregatedRef::set)
+			.aggregate(deltaStreamingModel.stream(new Prompt("Weather in Paris?")), aggregatedRef::set)
 			.collectList()
 			.block();
 
@@ -310,6 +300,55 @@ class BedrockProxyChatModelMessagePartsTests {
 		assertThat(content).extracting(ContentBlock::type)
 			.containsExactly(ContentBlock.Type.REASONING_CONTENT, ContentBlock.Type.TEXT, ContentBlock.Type.TOOL_USE);
 		assertThat(content.get(0).reasoningContent().reasoningText().signature()).isEqualTo(SIGNATURE);
+	}
+
+	@Test
+	void streamingBuffersToolUseUntilTheFinalChunkByDefault() {
+		givenStream(reasoningTextAndToolUseEvents());
+
+		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
+		List<ChatResponse> chunks = new MessageAggregator()
+			.aggregate(this.chatModel.stream(new Prompt("Weather in Paris?")), aggregatedRef::set)
+			.collectList()
+			.block();
+
+		// 3 reasoning deltas, 2 text deltas, 1 final chunk with the complete tool call:
+		// no chunk for the tool-use start or its input deltas, as before the parts model
+		assertThat(chunks).hasSize(6);
+		assertThat(chunks.subList(0, 5)).allSatisfy(chunk -> {
+			assertThat(chunk.hasToolCalls()).isFalse();
+			assertThat(chunk.getResult().getOutput().getParts()).noneMatch(part -> part instanceof ToolCallPart);
+		});
+		AssistantMessage last = chunks.get(5).getResult().getOutput();
+		assertThat(last.getToolCalls()).containsExactly(WEATHER_CALL);
+		MessagePart toolCallPart = last.getParts().get(0);
+		assertThat(toolCallPart).isInstanceOf(ToolCallPart.class);
+		assertThat(StreamingParts.partIndex(toolCallPart)).isEqualTo(2);
+		assertThat(StreamingParts.isPartial(toolCallPart)).isFalse();
+		assertThat(last.getText()).isEmpty();
+
+		AssistantMessage aggregated = aggregatedRef.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(
+				new ReasoningPart("Think hard.", null, false, SIGNATURE_PAYLOAD, Map.of()),
+				TextPart.of("Let me check."), ToolCallPart.of(WEATHER_CALL));
+	}
+
+	private static List<ConverseStreamOutput> reasoningTextAndToolUseEvents() {
+		return List.of(reasoningDelta(0, "Think "), reasoningDelta(0, "hard."), signatureDelta(0, SIGNATURE),
+				ConverseStreamOutput.contentBlockStopBuilder().contentBlockIndex(0).build(), textDelta(1, "Let me "),
+				textDelta(1, "check."), ConverseStreamOutput.contentBlockStopBuilder().contentBlockIndex(1).build(),
+				ConverseStreamOutput.contentBlockStartBuilder()
+					.contentBlockIndex(2)
+					.start(ContentBlockStart.builder()
+						.toolUse(ToolUseBlockStart.builder().toolUseId("tooluse_123").name("getCurrentWeather").build())
+						.build())
+					.build(),
+				toolUseDelta(2, "{\"location\":"), toolUseDelta(2, "\"Paris\"}"),
+				ConverseStreamOutput.contentBlockStopBuilder().contentBlockIndex(2).build(),
+				ConverseStreamOutput.messageStopBuilder().stopReason(StopReason.TOOL_USE).build(),
+				ConverseStreamOutput.metadataBuilder()
+					.usage(TokenUsage.builder().inputTokens(10).outputTokens(20).totalTokens(30).build())
+					.build());
 	}
 
 	@Test

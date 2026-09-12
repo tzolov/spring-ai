@@ -221,7 +221,7 @@ class OpenAiChatModelMessagePartsTests {
 	// -- streaming --
 
 	@Test
-	void streamingReasoningTextAndToolCallProduceIndexedParts() {
+	void streamingReasoningTextAndToolCallProduceIndexedPartsWithDeltasEnabled() {
 		List<ChatCompletionChunk> chunks = List.of(
 				streamingChunk(delta -> delta.role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
 					.putAdditionalProperty("reasoning_content", JsonValue.from("Think ")), null),
@@ -247,7 +247,8 @@ class OpenAiChatModelMessagePartsTests {
 				}, ChatCompletionChunk.Choice.FinishReason.TOOL_CALLS));
 
 		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
-		List<ChatResponse> responses = new MessageAggregator().aggregate(streamResponses(chunks), aggregatedRef::set)
+		List<ChatResponse> responses = new MessageAggregator()
+			.aggregate(streamResponses(chunks, true), aggregatedRef::set)
 			.collectList()
 			.block();
 
@@ -291,6 +292,61 @@ class OpenAiChatModelMessagePartsTests {
 	}
 
 	@Test
+	void toolCallDeltasAreNotEmittedByDefault() {
+		// Same chunk sequence as above, default builder: the tool-call chunks are
+		// buffered and only the merged complete call is emitted, as before the parts
+		// model
+		List<ChatCompletionChunk> chunks = List.of(
+				streamingChunk(delta -> delta.role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+					.putAdditionalProperty("reasoning_content", JsonValue.from("Think ")), null),
+				streamingChunk(delta -> delta.putAdditionalProperty("reasoning_content", JsonValue.from("first.")),
+						null),
+				streamingChunk(delta -> delta.content("Let me "), null),
+				streamingChunk(delta -> delta.content("check."), null),
+				streamingChunk(delta -> delta.toolCalls(List.of(ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+					.index(0L)
+					.id("call_1")
+					.function(ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder()
+						.name("getWeather")
+						.arguments("{\"city\":")
+						.build())
+					.build())), null),
+				streamingChunk(delta -> delta.toolCalls(List.of(ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+					.index(0L)
+					.function(ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder()
+						.arguments("\"Seoul\"}")
+						.build())
+					.build())), null),
+				streamingChunk(delta -> {
+				}, ChatCompletionChunk.Choice.FinishReason.TOOL_CALLS));
+
+		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
+		List<ChatResponse> responses = new MessageAggregator().aggregate(streamResponses(chunks), aggregatedRef::set)
+			.collectList()
+			.block();
+
+		// two reasoning deltas, two text deltas, one merged tool-call chunk; no delta
+		// chunk
+		assertThat(responses).hasSize(5);
+		assertThat(responses).noneMatch(r -> r.getResult()
+			.getOutput()
+			.getParts()
+			.stream()
+			.anyMatch(part -> part instanceof ToolCallPart && StreamingParts.isPartial(part)));
+		ChatResponse merged = responses.get(4);
+		assertThat(merged.hasToolCalls()).isTrue();
+		AssistantMessage.ToolCall complete = new AssistantMessage.ToolCall("call_1", "function", "getWeather",
+				"{\"city\":\"Seoul\"}");
+		assertThat(merged.getResult().getOutput().getParts())
+			.contains(StreamingParts.complete(ToolCallPart.of(complete), 2));
+		assertThat(merged.getResult().getOutput().getMetadata()).containsEntry("reasoningContent", "Think first.");
+
+		AssistantMessage aggregated = aggregatedRef.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(ReasoningPart.of("Think first."),
+				TextPart.of("Let me check."), ToolCallPart.of(complete));
+	}
+
+	@Test
 	void streamEndingInsideAToolCallStillEmitsTheMergedCall() {
 		// finish_reason "length" mid-arguments (or a server that never sends
 		// "tool_calls"): the buffered chunks must be flushed on completion
@@ -310,7 +366,8 @@ class OpenAiChatModelMessagePartsTests {
 					.build())), ChatCompletionChunk.Choice.FinishReason.LENGTH));
 
 		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
-		List<ChatResponse> responses = new MessageAggregator().aggregate(streamResponses(chunks), aggregatedRef::set)
+		List<ChatResponse> responses = new MessageAggregator()
+			.aggregate(streamResponses(chunks, true), aggregatedRef::set)
 			.collectList()
 			.block();
 
@@ -444,10 +501,15 @@ class OpenAiChatModelMessagePartsTests {
 	// -- helpers --
 
 	private OpenAiChatModel chatModel(String model) {
+		return chatModel(model, false);
+	}
+
+	private OpenAiChatModel chatModel(String model, boolean streamToolCallDeltas) {
 		return OpenAiChatModel.builder()
 			.openAiClient(this.openAiClient)
 			.openAiClientAsync(this.openAiClientAsync)
 			.options(OpenAiChatOptions.builder().model(model).build())
+			.streamToolCallDeltas(streamToolCallDeltas)
 			.build();
 	}
 
@@ -488,6 +550,10 @@ class OpenAiChatModelMessagePartsTests {
 	}
 
 	private Flux<ChatResponse> streamResponses(List<ChatCompletionChunk> chunks) {
+		return streamResponses(chunks, false);
+	}
+
+	private Flux<ChatResponse> streamResponses(List<ChatCompletionChunk> chunks, boolean streamToolCallDeltas) {
 		ChatServiceAsync chatServiceAsync = mock(ChatServiceAsync.class);
 		ChatCompletionServiceAsync chatCompletionServiceAsync = mock(ChatCompletionServiceAsync.class);
 		when(this.openAiClientAsync.chat()).thenReturn(chatServiceAsync);
@@ -495,7 +561,7 @@ class OpenAiChatModelMessagePartsTests {
 		when(chatCompletionServiceAsync.createStreaming(any(ChatCompletionCreateParams.class),
 				any(RequestOptions.class)))
 			.thenReturn(asyncStreamResponseOf(chunks));
-		OpenAiChatModel chatModel = chatModel("deepseek-reasoner");
+		OpenAiChatModel chatModel = chatModel("deepseek-reasoner", streamToolCallDeltas);
 		return chatModel.stream(new Prompt("Stream parts", chatModel.getOptions()));
 	}
 

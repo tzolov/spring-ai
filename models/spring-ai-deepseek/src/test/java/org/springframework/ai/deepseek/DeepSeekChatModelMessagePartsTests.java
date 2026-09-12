@@ -251,7 +251,7 @@ class DeepSeekChatModelMessagePartsTests {
 
 		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
 		List<ChatResponse> responses = new MessageAggregator()
-			.aggregate(chatModel().stream(new Prompt("Weather?")), aggregatedRef::set)
+			.aggregate(chatModel(true).stream(new Prompt("Weather?")), aggregatedRef::set)
 			.collectList()
 			.block();
 
@@ -323,7 +323,7 @@ class DeepSeekChatModelMessagePartsTests {
 
 		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
 		List<ChatResponse> responses = new MessageAggregator()
-			.aggregate(chatModel().stream(new Prompt("Weather?")), aggregatedRef::set)
+			.aggregate(chatModel(true).stream(new Prompt("Weather?")), aggregatedRef::set)
 			.collectList()
 			.block();
 
@@ -353,7 +353,7 @@ class DeepSeekChatModelMessagePartsTests {
 
 		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
 		List<ChatResponse> responses = new MessageAggregator()
-			.aggregate(chatModel().stream(new Prompt("Weather?")), aggregatedRef::set)
+			.aggregate(chatModel(true).stream(new Prompt("Weather?")), aggregatedRef::set)
 			.collectList()
 			.block();
 
@@ -381,6 +381,44 @@ class DeepSeekChatModelMessagePartsTests {
 		assertThat(aggregated.getParts()).containsExactly(ReasoningPart.of("Think first."), TextPart.of("Checking."),
 				ToolCallPart.of(WEATHER_CALL));
 		assertThat(aggregated.getToolCalls()).containsExactly(WEATHER_CALL);
+	}
+
+	@Test
+	void toolCallDeltasAreNotEmittedByDefault() {
+		// Same chunk sequence as the opt-in test; with the default the raw stream has
+		// the pre-parts shape: no delta chunks, only the merged complete call once
+		ChatCompletionMessage firstDelta = new ChatCompletionMessage(null, Role.ASSISTANT, null, null,
+				List.of(new ToolCall(0, "call_1", "function", new ChatCompletionFunction("getWeather", "{\"city\":"))),
+				null, null);
+		ChatCompletionMessage secondDelta = new ChatCompletionMessage(null, null, null, null,
+				List.of(new ToolCall(0, "", null, new ChatCompletionFunction(null, "\"Seoul\"}"))), null, null);
+		List<ChatCompletionChunk> chunks = List.of(chunk(delta(null, "Think "), null),
+				chunk(delta(null, "first."), null), chunk(delta("Checking.", null), null), chunk(firstDelta, null),
+				chunk(secondDelta, null), chunk(new ChatCompletionMessage(null, null, null, null, null, null, null),
+						ChatCompletionFinishReason.TOOL_CALLS));
+		given(this.deepSeekApi.chatCompletionStreamRaw(any(ChatCompletionRequest.class)))
+			.willReturn(Flux.fromIterable(chunks));
+
+		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
+		List<ChatResponse> responses = new MessageAggregator()
+			.aggregate(chatModel().stream(new Prompt("Weather?")), aggregatedRef::set)
+			.collectList()
+			.block();
+
+		// two reasoning deltas, one text delta, the merged call: no delta chunks
+		assertThat(responses).hasSize(4);
+		assertThat(responses).noneSatisfy(r -> assertThat(r.getResult().getOutput().getParts())
+			.anyMatch(part -> part instanceof ToolCallPart && StreamingParts.isPartial(part)));
+		ChatResponse merged = responses.get(3);
+		assertThat(merged.hasToolCalls()).isTrue();
+		assertThat(merged.getResult().getOutput().getToolCalls()).containsExactly(WEATHER_CALL);
+		assertThat(merged.getResult().getOutput().getParts())
+			.containsExactly(StreamingParts.complete(ToolCallPart.of(WEATHER_CALL), 2));
+		assertThat(merged.getResult().getOutput().getMetadata()).containsEntry("reasoningContent", "Think first.");
+
+		AssistantMessage aggregated = aggregatedRef.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(ReasoningPart.of("Think first."), TextPart.of("Checking."),
+				ToolCallPart.of(WEATHER_CALL));
 	}
 
 	@Test
@@ -418,9 +456,14 @@ class DeepSeekChatModelMessagePartsTests {
 	// -- helpers --
 
 	private DeepSeekChatModel chatModel() {
+		return chatModel(false);
+	}
+
+	private DeepSeekChatModel chatModel(boolean streamToolCallDeltas) {
 		return DeepSeekChatModel.builder()
 			.deepSeekApi(this.deepSeekApi)
 			.options(DeepSeekChatOptions.builder().model("deepseek-reasoner").build())
+			.streamToolCallDeltas(streamToolCallDeltas)
 			.build();
 	}
 
