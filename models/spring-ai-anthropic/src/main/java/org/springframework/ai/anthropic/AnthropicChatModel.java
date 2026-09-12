@@ -765,7 +765,7 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			if (message.getMessageType() == MessageType.USER) {
 				UserMessage userMessage = (UserMessage) message;
 				boolean hasCitationDocs = !CollectionUtils.isEmpty(citationDocuments);
-				boolean hasMedia = !CollectionUtils.isEmpty(userMessage.getMedia());
+				boolean hasMedia = userMessage.getParts().stream().anyMatch(MediaPart.class::isInstance);
 				boolean isLastUserMessage = (i == lastUserIndex);
 				boolean applyCacheToUser = isLastUserMessage && cacheResolver.isCachingEnabled();
 
@@ -786,19 +786,35 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 						}
 					}
 
-					String text = userMessage.getText();
-					if (text != null && !text.isEmpty()) {
-						TextBlockParam.Builder textBlockBuilder = TextBlockParam.builder().text(text);
-						if (userCacheControl != null) {
-							textBlockBuilder.cacheControl(userCacheControl);
-							cacheResolver.useCacheBlock();
+					// One block per part, in part order, so text and media interleave as
+					// the message was built. Legacy messages have text first, then media.
+					// The cache breakpoint goes on the last non-empty text block.
+					List<MessagePart> userParts = userMessage.getParts();
+					int lastTextIndex = -1;
+					for (int p = 0; p < userParts.size(); p++) {
+						if (userParts.get(p) instanceof TextPart textPart && !textPart.text().isEmpty()) {
+							lastTextIndex = p;
 						}
-						contentBlocks.add(ContentBlockParam.ofText(textBlockBuilder.build()));
 					}
-
-					if (hasMedia) {
-						for (Media media : userMessage.getMedia()) {
-							contentBlocks.add(getContentBlockParamByMedia(media));
+					for (int p = 0; p < userParts.size(); p++) {
+						MessagePart part = userParts.get(p);
+						if (part instanceof TextPart textPart) {
+							if (textPart.text().isEmpty()) {
+								continue;
+							}
+							TextBlockParam.Builder textBlockBuilder = TextBlockParam.builder().text(textPart.text());
+							if (userCacheControl != null && p == lastTextIndex) {
+								textBlockBuilder.cacheControl(userCacheControl);
+								cacheResolver.useCacheBlock();
+							}
+							contentBlocks.add(ContentBlockParam.ofText(textBlockBuilder.build()));
+						}
+						else if (part instanceof MediaPart mediaPart) {
+							contentBlocks.add(getContentBlockParamByMedia(mediaPart.media()));
+						}
+						else if (logger.isDebugEnabled()) {
+							logger.debug("Skipping user message part " + part.getClass().getSimpleName()
+									+ " that Anthropic cannot take");
 						}
 					}
 

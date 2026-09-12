@@ -588,6 +588,26 @@ var userMessage = UserMessage.builder()
     .build();
 ----
 
+The text is sent first, followed by the media, one content block each.
+
+=== Interleaving Text and Media
+
+To control where each image sits relative to the text, build the message from parts.
+Each `MessagePart` becomes one content block, in the order the parts were added:
+
+[source,java]
+----
+var userMessage = UserMessage.builder()
+    .part(TextPart.of("The first chart:"))
+    .part(MediaPart.of(new Media(MimeTypeUtils.IMAGE_PNG, image1Resource)))
+    .part(TextPart.of("The second chart:"))
+    .part(MediaPart.of(new Media(MimeTypeUtils.IMAGE_PNG, image2Resource)))
+    .part(TextPart.of("Which one shows the larger growth?"))
+    .build();
+----
+
+When prompt caching applies to the user message, the cache breakpoint goes on the last text block.
+
 == Citations
 
 Anthropic's https://docs.anthropic.com/en/docs/build-with-claude/citations[Citations API] allows Claude to reference specific parts of provided documents when generating responses.

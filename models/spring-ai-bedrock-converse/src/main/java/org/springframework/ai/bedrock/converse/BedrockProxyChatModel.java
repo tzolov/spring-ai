@@ -85,6 +85,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.part.MediaPart;
 import org.springframework.ai.chat.messages.part.MessagePart;
 import org.springframework.ai.chat.messages.part.ReasoningPart;
 import org.springframework.ai.chat.messages.part.TextPart;
@@ -314,21 +315,23 @@ public class BedrockProxyChatModel implements ChatModel {
 
 			if (message.getMessageType() == MessageType.USER) {
 				List<ContentBlock> contents = new ArrayList<>();
-				if (message instanceof UserMessage) {
-					var userMessage = (UserMessage) message;
-					// The Converse API rejects empty text content blocks, so only send
-					// the text when there is any. A user message may legitimately carry
-					// media only (gh-6695).
-					if (StringUtils.hasText(userMessage.getText())) {
-						contents.add(ContentBlock.fromText(userMessage.getText()));
-					}
-
-					if (!CollectionUtils.isEmpty(userMessage.getMedia())) {
-						List<ContentBlock> mediaContent = userMessage.getMedia()
-							.stream()
-							.map(this::mapMediaToContentBlock)
-							.toList();
-						contents.addAll(mediaContent);
+				if (message instanceof UserMessage userMessage) {
+					// Send the parts in their order so text and media can interleave;
+					// legacy messages carry text then media. The Converse API rejects
+					// empty text content blocks, so a blank text part is skipped and a
+					// user message may legitimately carry media only (gh-6695).
+					for (MessagePart part : userMessage.getParts()) {
+						if (part instanceof TextPart textPart) {
+							if (StringUtils.hasText(textPart.text())) {
+								contents.add(ContentBlock.fromText(textPart.text()));
+							}
+						}
+						else if (part instanceof MediaPart mediaPart) {
+							contents.add(mapMediaToContentBlock(mediaPart.media()));
+						}
+						else if (logger.isDebugEnabled()) {
+							logger.debug("Skipping unsupported user message part " + part.getClass().getSimpleName());
+						}
 					}
 				}
 

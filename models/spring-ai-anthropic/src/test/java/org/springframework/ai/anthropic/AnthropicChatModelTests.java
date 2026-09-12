@@ -66,6 +66,7 @@ import org.mockito.quality.Strictness;
 
 import org.springframework.ai.anthropic.metadata.AnthropicRateLimit;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -644,6 +645,83 @@ class AnthropicChatModelTests {
 		assertThat(captor.getValue().messages()).hasSize(2);
 		assertThat(captor.getValue().messages())
 			.allSatisfy(message -> assertThat(message.role()).isEqualTo(MessageParam.Role.USER));
+	}
+
+	@Test
+	void userMessagePartsInterleaveTextAndMediaOnTheWire() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+		Media image = Media.builder().mimeType(MimeTypeUtils.IMAGE_PNG).data(new byte[] { 1, 2, 3 }).build();
+		UserMessage interleaved = UserMessage.builder()
+			.part(TextPart.of("Look at "))
+			.part(MediaPart.of(image))
+			.part(TextPart.of("this."))
+			.build();
+
+		this.chatModel.call(new Prompt(List.of(interleaved)));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		List<ContentBlockParam> blocks = captor.getValue().messages().get(0).content().asBlockParams();
+		assertThat(blocks).hasSize(3);
+		assertThat(blocks.get(0).asText().text()).isEqualTo("Look at ");
+		assertThat(blocks.get(1).isImage()).isTrue();
+		assertThat(blocks.get(2).asText().text()).isEqualTo("this.");
+	}
+
+	@Test
+	void cacheBreakpointGoesOnTheLastTextBlockOfAnInterleavedUserMessage() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+		AnthropicCacheOptions cacheOptions = AnthropicCacheOptions.builder()
+			.strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY)
+			.messageTypeMinContentLengths(Map.of(MessageType.USER, 0))
+			.build();
+		AnthropicChatOptions options = AnthropicChatOptions.builder().cacheOptions(cacheOptions).build();
+		Media image = Media.builder().mimeType(MimeTypeUtils.IMAGE_PNG).data(new byte[] { 1, 2, 3 }).build();
+		TextPart repeated = TextPart.of("Same text");
+		UserMessage interleaved = UserMessage.builder()
+			.part(repeated)
+			.part(MediaPart.of(image))
+			.part(repeated)
+			.part(TextPart.of(""))
+			.build();
+
+		this.chatModel.call(new Prompt(List.of(interleaved), options));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		List<ContentBlockParam> blocks = captor.getValue().messages().get(0).content().asBlockParams();
+		// The empty text part is skipped; only the last text block carries the
+		// breakpoint,
+		// even though the same TextPart instance appears twice
+		assertThat(blocks).hasSize(3);
+		assertThat(blocks.get(0).asText().cacheControl()).isEmpty();
+		assertThat(blocks.get(1).isImage()).isTrue();
+		assertThat(blocks.get(2).asText().cacheControl()).isPresent();
+	}
+
+	@Test
+	void legacyUserMessageKeepsTextThenMediaOrder() {
+		Message mockResponse = createMockMessage("Done.", StopReason.END_TURN);
+		given(this.messageService.create(any(MessageCreateParams.class))).willReturn(mockResponse);
+		Media image = Media.builder().mimeType(MimeTypeUtils.IMAGE_PNG).data(new byte[] { 1, 2, 3 }).build();
+		UserMessage legacy = UserMessage.builder().media(image).text("describe").build();
+		UserMessage mediaOnly = UserMessage.builder().part(MediaPart.of(image)).build();
+
+		this.chatModel.call(new Prompt(List.of(legacy, new AssistantMessage("Sure."), mediaOnly)));
+
+		ArgumentCaptor<MessageCreateParams> captor = ArgumentCaptor.forClass(MessageCreateParams.class);
+		verify(this.messageService).create(captor.capture());
+		List<ContentBlockParam> legacyBlocks = captor.getValue().messages().get(0).content().asBlockParams();
+		assertThat(legacyBlocks).hasSize(2);
+		assertThat(legacyBlocks.get(0).asText().text()).isEqualTo("describe");
+		assertThat(legacyBlocks.get(1).isImage()).isTrue();
+		List<ContentBlockParam> mediaOnlyBlocks = captor.getValue().messages().get(2).content().asBlockParams();
+		assertThat(mediaOnlyBlocks).hasSize(1);
+		assertThat(mediaOnlyBlocks.get(0).isImage()).isTrue();
+		// A text-only message is still sent as a plain string
+		assertThat(captor.getValue().messages().get(1).content().isString()).isTrue();
 	}
 
 	@Test

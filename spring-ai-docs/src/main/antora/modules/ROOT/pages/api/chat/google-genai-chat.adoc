@@ -635,6 +635,9 @@ var userMessage = UserMessage.builder()
 ChatResponse response = chatModel.call(new Prompt(List.of(this.userMessage)));
 ----
 
+The parts of a `UserMessage` are sent to Gemini in their order, so text and media can interleave when the message is built from parts, for example `UserMessage.builder().part(TextPart.of("Look at ")).part(MediaPart.of(image)).part(TextPart.of("this.")).build()`.
+A message built with `text(...)` and `media(...)` keeps the order text then media.
+
 === PDF
 
 Google GenAI provides support for PDF input types.

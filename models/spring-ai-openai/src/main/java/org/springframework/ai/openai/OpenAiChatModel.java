@@ -567,6 +567,65 @@ public final class OpenAiChatModel implements ChatModel {
 		return new Generation(assistantMessageBuilder.build(), generationMetadataBuilder.build());
 	}
 
+	private static boolean hasMediaPart(UserMessage userMessage) {
+		return userMessage.getParts().stream().anyMatch(MediaPart.class::isInstance);
+	}
+
+	/**
+	 * Converts one media to a content part: images as image urls (data urls for bytes),
+	 * audio as input audio, PDFs as files and anything else as a text part holding the
+	 * data url. Returns {@code null} for an image whose data type is not supported.
+	 */
+	private @Nullable ChatCompletionContentPart toContentPart(Media media) {
+		String mimeType = media.getMimeType().toString();
+		if (mimeType.startsWith("image/")) {
+			String url;
+			if (media.getData() instanceof java.net.URI uri) {
+				url = uri.toString();
+			}
+			else if (media.getData() instanceof String text) {
+				// The Media builder stores a URL as a String, so accept both.
+				url = text;
+			}
+			else if (media.getData() instanceof byte[] bytes) {
+				// Assume the bytes are an image and send them as a base64 data url.
+				url = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+			}
+			else {
+				if (logger.isInfoEnabled()) {
+					logger.info("Could not process image media with data of type: "
+							+ media.getData().getClass().getSimpleName()
+							+ ". Only java.net.URI is supported for image URLs.");
+				}
+				return null;
+			}
+			return ChatCompletionContentPart.ofImageUrl(ChatCompletionContentPartImage.builder()
+				.imageUrl(ChatCompletionContentPartImage.ImageUrl.builder().url(url).build())
+				.build());
+		}
+		if (mimeType.startsWith("audio/")) {
+			return ChatCompletionContentPart.ofInputAudio(ChatCompletionContentPartInputAudio.builder()
+				.inputAudio(ChatCompletionContentPartInputAudio.InputAudio.builder()
+					.data(fromAudioData(media.getData()))
+					.format(mimeType.contains("mp3") ? ChatCompletionContentPartInputAudio.InputAudio.Format.MP3
+							: ChatCompletionContentPartInputAudio.InputAudio.Format.WAV)
+					.build())
+				.build());
+		}
+		if ("application/pdf".equals(mimeType)) {
+			return ChatCompletionContentPart.ofFile(ChatCompletionContentPart.File.builder()
+				.file(ChatCompletionContentPart.File.FileObject.builder()
+					.filename(media.getName())
+					.fileData(fromMediaData(media.getMimeType(), media.getData()))
+					.build())
+				.build());
+		}
+		// Any other media type is represented as a data url in a text part
+		return ChatCompletionContentPart.ofText(ChatCompletionContentPartText.builder()
+			.text(fromMediaData(media.getMimeType(), media.getData()))
+			.build());
+	}
+
 	private Map<String, String> extractToolCallAdditionalProperties(ChatCompletionMessage message) {
 		Map<String, String> result = new LinkedHashMap<>();
 		message.toolCalls()
@@ -653,92 +712,28 @@ public final class OpenAiChatModel implements ChatModel {
 					// Handle simple text content for user and system messages
 					ChatCompletionUserMessageParam.Builder builder = ChatCompletionUserMessageParam.builder();
 
-					if (message instanceof UserMessage userMessage
-							&& !CollectionUtils.isEmpty(userMessage.getMedia())) {
-						// Handle media content (images, audio, files)
+					if (message instanceof UserMessage userMessage && hasMediaPart(userMessage)) {
+						// Content parts in part order, so text and media can interleave;
+						// legacy messages have their parts as text then media
 						List<ChatCompletionContentPart> parts = new ArrayList<>();
-
-						String messageText = message.getText();
-						if (messageText != null && !messageText.isEmpty()) {
-							parts.add(ChatCompletionContentPart
-								.ofText(ChatCompletionContentPartText.builder().text(messageText).build()));
+						for (MessagePart part : userMessage.getParts()) {
+							if (part instanceof TextPart textPart) {
+								if (!textPart.text().isEmpty()) {
+									parts.add(ChatCompletionContentPart
+										.ofText(ChatCompletionContentPartText.builder().text(textPart.text()).build()));
+								}
+							}
+							else if (part instanceof MediaPart mediaPart) {
+								ChatCompletionContentPart contentPart = toContentPart(mediaPart.media());
+								if (contentPart != null) {
+									parts.add(contentPart);
+								}
+							}
+							else if (logger.isDebugEnabled()) {
+								logger
+									.debug("Skipping unsupported user message part " + part.getClass().getSimpleName());
+							}
 						}
-
-						// Add media content parts
-						userMessage.getMedia().forEach(media -> {
-							String mimeType = media.getMimeType().toString();
-							if (mimeType.startsWith("image/")) {
-								if (media.getData() instanceof java.net.URI uri) {
-									parts.add(ChatCompletionContentPart
-										.ofImageUrl(ChatCompletionContentPartImage.builder()
-											.imageUrl(ChatCompletionContentPartImage.ImageUrl.builder()
-												.url(uri.toString())
-												.build())
-											.build()));
-								}
-								else if (media.getData() instanceof String text) {
-									// The org.springframework.ai.content.Media object
-									// should store the URL as a java.net.URI but it
-									// transforms it to String somewhere along the way,
-									// for example in its Builder class. So, we accept
-									// String as well here for image URLs.
-									parts.add(ChatCompletionContentPart
-										.ofImageUrl(ChatCompletionContentPartImage.builder()
-											.imageUrl(
-													ChatCompletionContentPartImage.ImageUrl.builder().url(text).build())
-											.build()));
-								}
-								else if (media.getData() instanceof byte[] bytes) {
-									// Assume the bytes are an image. So, convert the
-									// bytes to a base64 encoded
-									ChatCompletionContentPartImage.ImageUrl.Builder imageUrlBuilder = ChatCompletionContentPartImage.ImageUrl
-										.builder();
-
-									imageUrlBuilder.url("data:" + mimeType + ";base64,"
-											+ Base64.getEncoder().encodeToString(bytes));
-									parts.add(ChatCompletionContentPart
-										.ofImageUrl(ChatCompletionContentPartImage.builder()
-											.imageUrl(imageUrlBuilder.build())
-											.build()));
-								}
-								else {
-									if (logger.isInfoEnabled()) {
-										logger.info("Could not process image media with data of type: "
-												+ media.getData().getClass().getSimpleName()
-												+ ". Only java.net.URI is supported for image URLs.");
-									}
-								}
-							}
-							else if (mimeType.startsWith("audio/")) {
-								parts.add(ChatCompletionContentPart
-									.ofInputAudio(ChatCompletionContentPartInputAudio.builder()
-										.inputAudio(ChatCompletionContentPartInputAudio.builder()
-											.inputAudio(ChatCompletionContentPartInputAudio.InputAudio.builder()
-												.data(fromAudioData(media.getData()))
-												.format(mimeType.contains("mp3")
-														? ChatCompletionContentPartInputAudio.InputAudio.Format.MP3
-														: ChatCompletionContentPartInputAudio.InputAudio.Format.WAV)
-												.build())
-											.build()
-											.inputAudio())
-										.build()));
-							}
-							else if ("application/pdf".equals(mimeType)) {
-								parts.add(ChatCompletionContentPart.ofFile(ChatCompletionContentPart.File.builder()
-									.file(ChatCompletionContentPart.File.FileObject.builder()
-										.filename(media.getName())
-										.fileData(fromMediaData(media.getMimeType(), media.getData()))
-										.build())
-									.build()));
-							}
-							else {
-								// Assume it's a file or other media type represented as a
-								// data URL
-								parts.add(ChatCompletionContentPart.ofText(ChatCompletionContentPartText.builder()
-									.text(fromMediaData(media.getMimeType(), media.getData()))
-									.build()));
-							}
-						});
 						builder.contentOfArrayOfContentParts(parts);
 					}
 					else {

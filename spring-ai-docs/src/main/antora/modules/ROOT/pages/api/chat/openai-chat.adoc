@@ -332,6 +332,10 @@ ChatResponse response = chatModel.call(new Prompt(this.userMessage,
         OpenAiChatOptions.builder().model("gpt-4o").build()));
 ----
 
+The content parts of a user message are sent in the order of its `MessagePart` entries, so text and images can interleave.
+A message built with `UserMessage.builder().part(TextPart.of("Look at ")).part(MediaPart.of(image)).part(TextPart.of("this."))` reaches the model as text, image, text.
+Messages built with the constructors or the `text(...)` and `media(...)` setters keep the text-then-media order.
+
 TIP: GPT_4_VISION_PREVIEW will continue to be available only to existing users of this model starting June 17, 2024. If you are not an existing user, please use the GPT_4_O or GPT_4_TURBO models. More details https://platform.openai.com/docs/deprecations/2024-06-06-gpt-4-32k-and-vision-preview-models[here]
 
 or the image URL equivalent using the `gpt-4o` model:

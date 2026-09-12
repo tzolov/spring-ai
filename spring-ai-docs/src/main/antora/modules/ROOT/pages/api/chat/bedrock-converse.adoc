@@ -916,6 +916,8 @@ Currently, Bedrock Converse supports the `base64` encoded images of `image/jpeg`
 
 Spring AI's `Message` interface supports multimodal AI models by introducing the `Media` type.
 It contains data and information about media attachments in messages, using Spring's `org.springframework.util.MimeType` and a `java.lang.Object` for the raw media data.
+The parts of a `UserMessage` are sent in their order, so text and media can interleave when the message is built from `TextPart` and `MediaPart` entries.
+A message built with `text(...)` and `media(...)` keeps the text before the media, and blank text parts are not sent because the Converse API rejects empty text blocks.
 
 Below is a simple code example, demonstrating the combination of user text with an image.
 

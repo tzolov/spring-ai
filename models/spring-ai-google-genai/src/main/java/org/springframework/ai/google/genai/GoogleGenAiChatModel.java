@@ -278,14 +278,7 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 			return parts;
 		}
 		else if (message instanceof UserMessage userMessage) {
-			List<Part> parts = new ArrayList<>();
-			if (userMessage.getText() != null) {
-				parts.add(Part.fromText(userMessage.getText()));
-			}
-
-			parts.addAll(mediaToParts(userMessage.getMedia()));
-
-			return parts;
+			return userMessageToGeminiParts(userMessage);
 		}
 		else if (message instanceof AssistantMessage assistantMessage) {
 			return assistantMessageToGeminiParts(assistantMessage);
@@ -372,13 +365,7 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 				parts.addAll(mediaToParts(List.of(mediaPart.media())));
 			}
 			else if (part instanceof UnknownPart unknownPart) {
-				if (GOOGLE_PROVIDER.equals(unknownPart.provider())) {
-					parts.add(Part.fromJson(unknownPart.rawJson()));
-				}
-				else if (logger.isDebugEnabled()) {
-					logger.debug("Skipping unknown part of kind " + unknownPart.kind() + " from provider "
-							+ unknownPart.provider() + " on replay to Gemini");
-				}
+				replayUnknownPart(parts, unknownPart);
 			}
 			else if (part instanceof ToolResultPart) {
 				// Tool results go in a tool response message.
@@ -403,6 +390,47 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 			return new ArrayList<>((List<byte[]>) list);
 		}
 		return new ArrayList<>();
+	}
+
+	/**
+	 * Map the parts of a user message to Gemini parts in their order, so text and media
+	 * can interleave: a {@link TextPart} becomes a text part, a {@link MediaPart} goes
+	 * through the media conversion, a Google {@link UnknownPart} is replayed verbatim and
+	 * anything else is skipped. A message built through the legacy constructors or the
+	 * {@code text()} and {@code media()} setters has its parts in the order text then
+	 * media, so its wire order is unchanged.
+	 */
+	private List<Part> userMessageToGeminiParts(UserMessage userMessage) {
+		List<Part> parts = new ArrayList<>();
+		for (MessagePart part : userMessage.getParts()) {
+			if (part instanceof TextPart textPart) {
+				parts.add(Part.fromText(textPart.text()));
+			}
+			else if (part instanceof MediaPart mediaPart) {
+				parts.addAll(mediaToParts(List.of(mediaPart.media())));
+			}
+			else if (part instanceof UnknownPart unknownPart) {
+				replayUnknownPart(parts, unknownPart);
+			}
+			else if (logger.isDebugEnabled()) {
+				logger.debug("Skipping " + part.getClass().getSimpleName() + " on a user message sent to Gemini");
+			}
+		}
+		return parts;
+	}
+
+	/**
+	 * Replay an unknown part that Gemini produced (server-side tool parts, executable
+	 * code, file data) verbatim; unknown parts from other providers are skipped.
+	 */
+	private void replayUnknownPart(List<Part> parts, UnknownPart unknownPart) {
+		if (GOOGLE_PROVIDER.equals(unknownPart.provider())) {
+			parts.add(Part.fromJson(unknownPart.rawJson()));
+		}
+		else if (logger.isDebugEnabled()) {
+			logger.debug("Skipping unknown part of kind " + unknownPart.kind() + " from provider "
+					+ unknownPart.provider() + " on replay to Gemini");
+		}
 	}
 
 	private static List<Part> mediaToParts(Collection<Media> media) {
