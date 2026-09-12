@@ -130,7 +130,7 @@ class OllamaChatModelMessagePartsTests {
 		assertThat(chunks).hasSize(4);
 		AssistantMessage first = chunks.get(0).getResult().getOutput();
 		assertThat(first.getParts()).containsExactly(StreamingParts.partial(ReasoningPart.of("Think "), 0));
-		assertThat(first.getText()).isNull();
+		assertThat(first.getText()).isEmpty();
 		assertThat(first.getMetadata()).containsEntry("thinking", "Think ");
 		assertThat(chunks.get(0).getResult().getMetadata().<String>get("thinking")).isEqualTo("Think ");
 		assertThat(chunks.get(1).getResult().getOutput().getParts())
@@ -191,7 +191,7 @@ class OllamaChatModelMessagePartsTests {
 		assertThat(StreamingParts.isPartial(part)).isFalse();
 		assertThat(StreamingParts.partIndex(part)).isEqualTo(1);
 		assertThat(chunks.get(1).hasToolCalls()).isTrue();
-		assertThat(second.getText()).isNull();
+		assertThat(second.getText()).isEmpty();
 
 		AssistantMessage aggregated = aggregatedRef.get().getResult().getOutput();
 		assertThat(aggregated.getParts()).hasSize(2);

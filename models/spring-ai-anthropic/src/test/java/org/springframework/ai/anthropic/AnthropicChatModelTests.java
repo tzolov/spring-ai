@@ -286,7 +286,7 @@ class AnthropicChatModelTests {
 		assertThat(reasoning.payload()).isEqualTo(new OpaquePayload("anthropic", "signature", "thinking-signature"));
 		assertThat(output.getParts().get(1)).isInstanceOf(ToolCallPart.class);
 		assertThat(output.getToolCalls()).hasSize(1);
-		assertThat(output.getText()).isNull();
+		assertThat(output.getText()).isEmpty();
 
 		ToolExecutionResult toolExecutionResult = ToolCallingManager.builder()
 			.build()
@@ -479,7 +479,7 @@ class AnthropicChatModelTests {
 		assertThat(((ReasoningPart) thinkingDelta).text()).isEqualTo("thinking ");
 		assertThat(StreamingParts.partIndex(thinkingDelta)).isZero();
 		assertThat(StreamingParts.isPartial(thinkingDelta)).isTrue();
-		assertThat(firstThinkingChunk.getResult().getOutput().getText()).isNull();
+		assertThat(firstThinkingChunk.getResult().getOutput().getText()).isEmpty();
 		assertThat(firstThinkingChunk.getResult().getOutput().getMetadata()).containsEntry("thinking", Boolean.TRUE);
 		ChatResponse signatureChunk = chunks.get(2);
 		MessagePart signatureDelta = signatureChunk.getResult().getOutput().getParts().get(0);
@@ -490,8 +490,10 @@ class AnthropicChatModelTests {
 				"thinking-signature");
 		ChatResponse finalChunk = chunks.get(chunks.size() - 1);
 		assertThat(finalChunk.getResult().getMetadata().getFinishReason()).isEqualTo("tool_use");
-		assertThat(finalChunk.getResult().getOutput().getText()).isNull();
-		assertThat(finalChunk.getResult().getOutput().getParts()).hasSize(1);
+		assertThat(finalChunk.getResult().getOutput().getText()).isEmpty();
+		// the complete tool call plus the legacy empty text that keeps getText() non-null
+		assertThat(finalChunk.getResult().getOutput().getParts()).hasSize(2);
+		assertThat(finalChunk.getResult().getOutput().getParts().get(1)).isEqualTo(TextPart.of(""));
 		MessagePart toolCallPart = finalChunk.getResult().getOutput().getParts().get(0);
 		assertThat(toolCallPart).isInstanceOf(ToolCallPart.class);
 		assertThat(StreamingParts.partIndex(toolCallPart)).isEqualTo(1);
@@ -577,7 +579,7 @@ class AnthropicChatModelTests {
 		assertThat(chunks.get(1).hasToolCalls()).isFalse();
 		assertThat(chunks.get(2).hasToolCalls()).isFalse();
 		assertThat(chunks.get(3).hasToolCalls()).isFalse();
-		assertThat(chunks.get(1).getResult().getOutput().getText()).isNull();
+		assertThat(chunks.get(1).getResult().getOutput().getText()).isEmpty();
 
 		// The final chunk still carries the complete tool call, as before
 		AssistantMessage.ToolCall complete = new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather",

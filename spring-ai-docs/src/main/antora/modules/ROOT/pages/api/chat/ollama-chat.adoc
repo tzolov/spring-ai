@@ -396,7 +396,7 @@ stream.subscribe(response -> {
 });
 ----
 
-A thinking-only chunk has no text part, so `getText()` returns `null` for it.
+A thinking-only chunk has no text part, so `getText()` returns an empty string for it.
 The aggregated response produced by `ChatClient` or `MessageAggregator` contains the complete `ReasoningPart` followed by the complete `TextPart`.
 
 NOTE: When thinking is disabled or not set, `getReasoning()` is empty and the deprecated `thinking` metadata field is absent.

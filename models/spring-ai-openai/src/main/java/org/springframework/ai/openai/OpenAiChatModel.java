@@ -563,6 +563,12 @@ public final class OpenAiChatModel implements ChatModel {
 			// stay unindexed so the aggregator drops them instead of collecting one
 			// MediaPart per chunk.
 			assistantMessageBuilder.media(media);
+			if (parts.isEmpty() && media.isEmpty()) {
+				// A chunk without any part (for example the role-only first chunk)
+				// keeps an empty text, as it always had, so chunk texts can be joined
+				// without a null check.
+				assistantMessageBuilder.content("");
+			}
 		}
 		return new Generation(assistantMessageBuilder.build(), generationMetadataBuilder.build());
 	}

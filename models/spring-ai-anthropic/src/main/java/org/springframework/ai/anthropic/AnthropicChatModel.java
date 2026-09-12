@@ -517,7 +517,9 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			String stopReason = deltaEvent.delta().stopReason().map(r -> r.toString()).orElse("");
 			ChatGenerationMetadata metadata = ChatGenerationMetadata.builder().finishReason(stopReason).build();
 
-			AssistantMessage.Builder<?> messageBuilder = AssistantMessage.builder();
+			// The final chunk keeps an empty text, as it always had, so a streamed chunk
+			// never reports a null text and chunk texts can be joined as before.
+			AssistantMessage.Builder<?> messageBuilder = AssistantMessage.builder().content("");
 			streamingState.getCompletedToolCalls()
 				.forEach((index, toolCall) -> messageBuilder
 					.part(StreamingParts.complete(ToolCallPart.of(toolCall), index)));

@@ -317,10 +317,16 @@ public class OllamaChatModel implements ChatModel {
 				String thinking = chunk.message().thinking();
 				Map<String, Object> messageProperties = thinking != null ? Map.of(THINKING_METADATA_KEY, thinking)
 						: Map.of();
-				var assistantMessage = AssistantMessage.builder()
-					.parts(toMessageParts(chunk.message(), indexer))
-					.properties(messageProperties)
-					.build();
+				List<MessagePart> chunkParts = toMessageParts(chunk.message(), indexer);
+				AssistantMessage.Builder<?> assistantMessageBuilder = AssistantMessage.builder()
+					.parts(chunkParts)
+					.properties(messageProperties);
+				if (chunkParts.isEmpty()) {
+					// The final "done" chunk has no content: keep an empty text, as it
+					// always had, so chunk texts can be joined without a null check.
+					assistantMessageBuilder.content("");
+				}
+				var assistantMessage = assistantMessageBuilder.build();
 
 				ChatGenerationMetadata generationMetadata = ChatGenerationMetadata.NULL;
 				boolean hasEvalCount = chunk.promptEvalCount() != null && chunk.evalCount() != null;

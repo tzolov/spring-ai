@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -52,6 +53,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.messages.part.MessagePart;
 import org.springframework.ai.chat.messages.part.ReasoningPart;
 import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.TextPart;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -632,21 +634,26 @@ class AnthropicChatModelIT {
 			.collectList()
 			.block();
 
-		// Verify we got text content
+		// Verify we got text content. Whitespace-only deltas are real text and must be
+		// kept, otherwise the concatenation does not match the aggregated text.
 		String content = responses.stream()
 			.map(ChatResponse::getResults)
 			.flatMap(List::stream)
 			.map(Generation::getOutput)
 			.map(AssistantMessage::getText)
-			.filter(text -> text != null && !text.isBlank())
+			.filter(Objects::nonNull)
 			.collect(Collectors.joining());
 		assertThat(content).isNotBlank();
 
-		// Every chunk is an indexed part carrying the response id
+		// Every chunk carries the response id and indexed parts; the only unindexed
+		// part is the empty legacy text of the final chunk, which keeps getText()
+		// non-null there
 		assertThat(responses).allSatisfy(chunk -> {
 			assertThat(chunk.getMetadata().getId()).isNotBlank();
 			for (MessagePart part : chunk.getResult().getOutput().getParts()) {
-				assertThat(StreamingParts.partIndex(part)).isNotNull();
+				if (!TextPart.of("").equals(part)) {
+					assertThat(StreamingParts.partIndex(part)).isNotNull();
+				}
 			}
 		});
 

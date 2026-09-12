@@ -491,7 +491,7 @@ stream.subscribe(response -> {
     AssistantMessage message = response.getResult().getOutput();
     for (MessagePart part : message.getParts()) {
         if (part instanceof ReasoningPart reasoning && reasoning.text() != null) {
-            // Thinking delta; getText() is null on these chunks
+            // Thinking delta; getText() is empty on these chunks
             System.out.print(reasoning.text());
         }
         else if (part instanceof TextPart text) {

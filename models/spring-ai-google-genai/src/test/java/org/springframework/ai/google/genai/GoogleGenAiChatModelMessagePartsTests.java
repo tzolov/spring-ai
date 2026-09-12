@@ -294,7 +294,7 @@ class GoogleGenAiChatModelMessagePartsTests {
 		assertThat(responses).allSatisfy(r -> assertThat(r.getMetadata().getId()).isEqualTo("resp_1"));
 		MessagePart first = responses.get(0).getResult().getOutput().getParts().get(0);
 		assertThat(first).isEqualTo(StreamingParts.partial(ReasoningPart.of("think "), 0));
-		assertThat(responses.get(0).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(0).getResult().getOutput().getText()).isEmpty();
 		MessagePart signed = responses.get(1).getResult().getOutput().getParts().get(0);
 		assertThat(signed.payload()).isEqualTo(SIGNATURE_PAYLOAD);
 		assertThat(StreamingParts.partIndex(signed)).isZero();

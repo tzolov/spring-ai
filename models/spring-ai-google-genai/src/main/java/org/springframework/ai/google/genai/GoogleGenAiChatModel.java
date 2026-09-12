@@ -686,6 +686,11 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 			.build();
 
 		AssistantMessage.Builder<?> messageBuilder = AssistantMessage.builder().properties(messageMetadata);
+		if (indexer != null && parts.isEmpty()) {
+			// A streamed chunk without any part (for example a usage-only final chunk)
+			// keeps an empty text so chunk texts can be joined without a null check.
+			messageBuilder.content("");
+		}
 		for (Part part : parts) {
 			MessagePart messagePart = toMessagePart(part);
 			messageBuilder.part(indexer != null ? indexer.stamp(messagePart) : messagePart);

@@ -175,7 +175,7 @@ class BedrockProxyChatModelMessagePartsTests {
 		AssistantMessage output = chatResponse.getResult().getOutput();
 		assertThat(output.getParts()).hasSize(1);
 		assertThat(output.getParts().get(0)).isInstanceOf(ToolCallPart.class);
-		assertThat(output.getText()).isNull();
+		assertThat(output.getText()).isEmpty();
 		assertThat(chatResponse.hasToolCalls()).isTrue();
 	}
 
@@ -271,7 +271,7 @@ class BedrockProxyChatModelMessagePartsTests {
 		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.getMetadata().getId()).isEqualTo("req-1"));
 		assertThat(chunks.get(0).getResult().getOutput().getParts())
 			.containsExactly(StreamingParts.partial(ReasoningPart.of("Think "), 0));
-		assertThat(chunks.get(0).getResult().getOutput().getText()).isNull();
+		assertThat(chunks.get(0).getResult().getOutput().getText()).isEmpty();
 		assertThat(chunks.get(2).getResult().getOutput().getParts()).containsExactly(
 				StreamingParts.partial(new ReasoningPart(null, null, false, SIGNATURE_PAYLOAD, Map.of()), 0));
 		assertThat(chunks.get(3).getResult().getOutput().getParts())
@@ -287,7 +287,7 @@ class BedrockProxyChatModelMessagePartsTests {
 				ToolCallPart
 					.of(new AssistantMessage.ToolCall("tooluse_123", "function", "getCurrentWeather", "\"Paris\"}")),
 				2));
-		assertThat(chunks.get(5).getResult().getOutput().getText()).isNull();
+		assertThat(chunks.get(5).getResult().getOutput().getText()).isEmpty();
 		// Delta chunks never look like tool-call responses
 		assertThat(chunks.subList(0, 8)).allSatisfy(chunk -> assertThat(chunk.hasToolCalls()).isFalse());
 		AssistantMessage last = chunks.get(8).getResult().getOutput();

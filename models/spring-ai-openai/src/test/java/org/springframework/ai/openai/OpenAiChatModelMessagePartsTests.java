@@ -262,11 +262,11 @@ class OpenAiChatModelMessagePartsTests {
 		// Argument deltas are not tool calls yet
 		assertThat(responses.get(4).hasToolCalls()).isFalse();
 		assertThat(responses.get(5).hasToolCalls()).isFalse();
-		assertThat(responses.get(4).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(4).getResult().getOutput().getText()).isEmpty();
 		assertThat(responses.get(6).hasToolCalls()).isTrue();
 		MessagePart first = responses.get(0).getResult().getOutput().getParts().get(0);
 		assertThat(first).isEqualTo(StreamingParts.partial(ReasoningPart.of("Think "), 0));
-		assertThat(responses.get(0).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(0).getResult().getOutput().getText()).isEmpty();
 		MessagePart second = responses.get(1).getResult().getOutput().getParts().get(0);
 		assertThat(second).isEqualTo(StreamingParts.partial(ReasoningPart.of("first."), 0));
 		MessagePart text = responses.get(2).getResult().getOutput().getParts().get(0);
@@ -379,7 +379,7 @@ class OpenAiChatModelMessagePartsTests {
 
 		assertThat(responses.get(0).getResult().getOutput().getParts())
 			.containsExactly(StreamingParts.partial(ReasoningPart.of("Think "), 0));
-		assertThat(responses.get(0).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(0).getResult().getOutput().getText()).isEmpty();
 		assertThat(responses.get(2).getResult().getOutput().getParts())
 			.containsExactly(StreamingParts.partial(TextPart.of("Hello"), 1));
 		assertThat(aggregatedRef.get().getResult().getOutput().getParts())
@@ -387,7 +387,7 @@ class OpenAiChatModelMessagePartsTests {
 	}
 
 	@Test
-	void streamingRoleOnlyChunkHasNoParts() {
+	void streamingRoleOnlyChunkHasOnlyAnEmptyText() {
 		List<ChatCompletionChunk> chunks = List.of(
 				streamingChunk(delta -> delta.role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT).content(""), null),
 				streamingChunk(delta -> delta.content("Hello"), null), streamingChunk(delta -> {
@@ -399,8 +399,9 @@ class OpenAiChatModelMessagePartsTests {
 			.block();
 
 		AssistantMessage first = responses.get(0).getResult().getOutput();
-		assertThat(first.getParts()).isEmpty();
-		assertThat(first.getText()).isNull();
+		// No indexed part, only the legacy empty text so the chunk text is not null
+		assertThat(first.getParts()).containsExactly(TextPart.of(""));
+		assertThat(first.getText()).isEmpty();
 		assertThat(first.getMetadata()).containsEntry("role", "assistant");
 		assertThat(aggregatedRef.get().getResult().getOutput().getParts()).containsExactly(TextPart.of("Hello"));
 	}

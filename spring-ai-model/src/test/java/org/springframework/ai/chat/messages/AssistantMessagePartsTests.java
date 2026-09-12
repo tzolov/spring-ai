@@ -91,13 +91,21 @@ class AssistantMessagePartsTests {
 	}
 
 	@Test
-	void getTextIsNullWhenThereAreNoTextParts() {
+	void getTextIsEmptyWhenThereArePartsButNoTextPart() {
+		// Never null for a message with parts, so streamed chunks and tool-call turns
+		// can be joined without a null check, as before the parts model
 		AssistantMessage message = AssistantMessage.builder()
 			.part(ReasoningPart.of("hidden"))
 			.part(ToolCallPart.of(WEATHER_CALL))
 			.build();
 
-		assertThat(message.getText()).isNull();
+		assertThat(message.getText()).isEmpty();
+	}
+
+	@Test
+	void getTextIsNullOnlyWithoutAnyPart() {
+		assertThat(new AssistantMessage((String) null).getText()).isNull();
+		assertThat(AssistantMessage.builder().build().getText()).isNull();
 	}
 
 	@Test

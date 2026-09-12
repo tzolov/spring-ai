@@ -116,7 +116,11 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 
 	/**
 	 * Joins the text parts without a separator, matching the historical concatenation of
-	 * provider text blocks. Returns {@code null} when there is no text part at all.
+	 * provider text blocks. A message with parts but no text part (reasoning only, tool
+	 * calls only) has an empty text, so streamed chunks and tool-call turns never report
+	 * {@code null} and the common {@code map(getText).collect(joining())} idiom keeps
+	 * working; only a message without any part has a {@code null} text, as a legacy
+	 * message built from a {@code null} content always had.
 	 */
 	private static @Nullable String joinText(List<MessagePart> parts) {
 		Assert.notNull(parts, "Parts must not be null");
@@ -137,7 +141,13 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 				}
 			}
 		}
-		return (sb != null) ? sb.toString() : single;
+		if (sb != null) {
+			return sb.toString();
+		}
+		if (single != null) {
+			return single;
+		}
+		return parts.isEmpty() ? null : "";
 	}
 
 	/**

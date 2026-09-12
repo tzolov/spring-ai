@@ -351,10 +351,15 @@ public class DeepSeekChatModel implements ChatModel {
 			parts.replaceAll(indexer::stamp);
 		}
 
-		DeepSeekAssistantMessage assistantMessage = DeepSeekAssistantMessage.builder()
+		DeepSeekAssistantMessage.Builder assistantMessageBuilder = DeepSeekAssistantMessage.builder()
 			.parts(parts)
-			.properties(metadata)
-			.build();
+			.properties(metadata);
+		if (indexer != null && parts.isEmpty()) {
+			// A chunk without any part keeps an empty text, as it always had, so chunk
+			// texts can be joined without a null check.
+			assistantMessageBuilder.content("");
+		}
+		DeepSeekAssistantMessage assistantMessage = assistantMessageBuilder.build();
 		return new Generation(assistantMessage, generationMetadataBuilder.build());
 	}
 

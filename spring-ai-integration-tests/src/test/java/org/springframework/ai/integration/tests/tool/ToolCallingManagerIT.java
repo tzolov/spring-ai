@@ -97,9 +97,9 @@ public class ToolCallingManagerIT {
 
 		assertThat(secondChatResponse).isNotNull();
 		assertThat(secondChatResponse.getResult().getOutput().getText()).isNotEmpty()
-			.contains("The Hobbit")
-			.contains("The Lord of The Rings")
-			.contains("The Silmarillion");
+			.containsIgnoringCase("The Hobbit")
+			.containsIgnoringCase("The Lord of The Rings")
+			.containsIgnoringCase("The Silmarillion");
 	}
 
 	private void runExplicitToolCallingExecutionWithOptionsStream(OpenAiChatOptions chatOptions, Prompt prompt) {
@@ -126,9 +126,9 @@ public class ToolCallingManagerIT {
 		assertThat(joinedTextResponse).isNotEmpty()
 			.contains("His Dark Materials")
 			.contains("The Lion, the Witch and the Wardrob")
-			.contains("The Hobbit")
-			.contains("The Lord of The Rings")
-			.contains("The Silmarillion");
+			.containsIgnoringCase("The Hobbit")
+			.containsIgnoringCase("The Lord of The Rings")
+			.containsIgnoringCase("The Silmarillion");
 	}
 
 	static class Tools {

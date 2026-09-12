@@ -129,7 +129,7 @@ class DeepSeekChatModelMessagePartsTests {
 
 		AssistantMessage message = chatModel().call(new Prompt("Weather?")).getResult().getOutput();
 
-		assertThat(message.getText()).isNull();
+		assertThat(message.getText()).isEmpty();
 		assertThat(message.getParts())
 			.containsExactly(ToolCallPart.of(new AssistantMessage.ToolCall("call_1", "function", "getWeather", "{}")));
 	}
@@ -187,7 +187,8 @@ class DeepSeekChatModelMessagePartsTests {
 
 		ChatCompletionMessage param = assistantParam(assistant);
 
-		assertThat(param.content()).isNull();
+		// A tool-call turn without text has an empty text, sent as an empty content
+		assertThat(param.content()).isEmpty();
 		assertThat(param.toolCalls()).hasSize(1);
 		assertThat(param.toolCalls().get(0).id()).isEqualTo("call_1");
 		assertThat(param.toolCalls().get(0).function().arguments()).isEqualTo("{\"city\":\"Seoul\"}");
@@ -259,7 +260,7 @@ class DeepSeekChatModelMessagePartsTests {
 		assertThat(responses).allSatisfy(r -> assertThat(r.getMetadata().getId()).isEqualTo("chatcmpl-123"));
 		assertThat(responses.get(0).getResult().getOutput().getParts())
 			.containsExactly(StreamingParts.partial(ReasoningPart.of("Think "), 0));
-		assertThat(responses.get(0).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(0).getResult().getOutput().getText()).isEmpty();
 		assertThat(responses.get(1).getResult().getOutput().getParts())
 			.containsExactly(StreamingParts.partial(ReasoningPart.of("first."), 0));
 		assertThat(responses.get(2).getResult().getOutput().getParts())
@@ -301,7 +302,7 @@ class DeepSeekChatModelMessagePartsTests {
 
 		assertThat(responses.get(1).getResult().getOutput().getParts())
 			.containsExactly(StreamingParts.partial(ReasoningPart.of("\n\n"), 0));
-		assertThat(responses.get(1).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(1).getResult().getOutput().getText()).isEmpty();
 		assertThat(aggregatedRef.get().getResult().getOutput().getParts())
 			.containsExactly(ReasoningPart.of("Step one.\n\nStep two."), TextPart.of("Done"));
 	}
@@ -366,7 +367,7 @@ class DeepSeekChatModelMessagePartsTests {
 		// Argument deltas are not tool calls yet
 		assertThat(responses.get(3).hasToolCalls()).isFalse();
 		assertThat(responses.get(4).hasToolCalls()).isFalse();
-		assertThat(responses.get(3).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(3).getResult().getOutput().getText()).isEmpty();
 
 		// The merged chunk is what it was before: complete call, cumulative reasoning
 		ChatResponse merged = responses.get(5);
