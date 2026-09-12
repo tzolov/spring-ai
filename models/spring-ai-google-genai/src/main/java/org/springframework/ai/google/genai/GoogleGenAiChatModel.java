@@ -17,8 +17,11 @@
 package org.springframework.ai.google.genai;
 
 import java.net.URI;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -32,6 +35,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.google.genai.Client;
 import com.google.genai.ResponseStream;
+import com.google.genai.types.Blob;
 import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
 import com.google.genai.types.FinishReason;
@@ -67,6 +71,15 @@ import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.part.MediaPart;
+import org.springframework.ai.chat.messages.part.MessagePart;
+import org.springframework.ai.chat.messages.part.OpaquePayload;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
+import org.springframework.ai.chat.messages.part.ToolResultPart;
+import org.springframework.ai.chat.messages.part.UnknownPart;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
@@ -97,6 +110,7 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -153,6 +167,19 @@ import org.springframework.util.StringUtils;
 public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 
 	private static final ChatModelObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultChatModelObservationConvention();
+
+	/** The {@link OpaquePayload#provider()} of parts produced by this model. */
+	static final String GOOGLE_PROVIDER = "google";
+
+	/** The {@link OpaquePayload#kind()} of a Gemini thought signature. */
+	static final String PAYLOAD_THOUGHT_SIGNATURE = "thought_signature";
+
+	/**
+	 * Deprecated metadata key holding all thought signatures of a response as a list of
+	 * byte arrays. Signatures now travel as part payloads; the key is written for one
+	 * more release and read for histories persisted by earlier versions.
+	 */
+	static final String THOUGHT_SIGNATURES_METADATA_KEY = "thoughtSignatures";
 
 	private final Log logger = LogFactory.getLog(getClass());
 
@@ -261,50 +288,7 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 			return parts;
 		}
 		else if (message instanceof AssistantMessage assistantMessage) {
-			List<Part> parts = new ArrayList<>();
-
-			// Check if there are thought signatures to restore.
-			// Per Google's documentation, thought signatures must be attached to the
-			// first functionCall part in each step of the current turn.
-			// See: https://ai.google.dev/gemini-api/docs/thought-signatures
-			List<byte[]> thoughtSignatures = null;
-			if (assistantMessage.getMetadata() != null
-					&& assistantMessage.getMetadata().containsKey("thoughtSignatures")) {
-				Object signaturesObj = assistantMessage.getMetadata().get("thoughtSignatures");
-				if (signaturesObj instanceof List) {
-					thoughtSignatures = new ArrayList<>((List<byte[]>) signaturesObj);
-				}
-			}
-
-			// Add text part (without thought signature - signatures go on functionCall
-			// parts)
-			if (StringUtils.hasText(assistantMessage.getText())) {
-				parts.add(Part.builder().text(assistantMessage.getText()).build());
-			}
-
-			// Add function call parts with thought signatures attached.
-			// Per Google's docs: "The first functionCall part in each step of the
-			// current turn must include its thought_signature."
-			if (!CollectionUtils.isEmpty(assistantMessage.getToolCalls())) {
-				List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
-				for (int i = 0; i < toolCalls.size(); i++) {
-					AssistantMessage.ToolCall toolCall = toolCalls.get(i);
-					Part.Builder partBuilder = Part.builder()
-						.functionCall(FunctionCall.builder()
-							.name(toolCall.name())
-							.args(parseJsonToMap(toolCall.arguments()))
-							.build());
-
-					// Attach thought signature to function call part if available
-					if (thoughtSignatures != null && !thoughtSignatures.isEmpty()) {
-						partBuilder.thoughtSignature(thoughtSignatures.remove(0));
-					}
-
-					parts.add(partBuilder.build());
-				}
-			}
-
-			return parts;
+			return assistantMessageToGeminiParts(assistantMessage);
 		}
 		else if (message instanceof ToolResponseMessage toolResponseMessage) {
 
@@ -321,6 +305,104 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 		else {
 			throw new IllegalArgumentException("Gemini doesn't support message type: " + message.getClass());
 		}
+	}
+
+	/**
+	 * Converts an assistant message to Gemini parts in part order. Thought signatures
+	 * travel as {@link OpaquePayload}s on the parts that carried them (typically the
+	 * function calls, see https://ai.google.dev/gemini-api/docs/thought-signatures) and
+	 * are restored on exactly those parts. Messages persisted before the part model carry
+	 * their signatures in the deprecated {@code thoughtSignatures} metadata list; those
+	 * are attached positionally to the function calls as before, but only when no part
+	 * carries a Google payload. Reasoning text is not sent back, Gemini only takes the
+	 * signatures. Server-side tool parts that came from Gemini are replayed verbatim.
+	 */
+	private List<Part> assistantMessageToGeminiParts(AssistantMessage assistantMessage) {
+		List<Part> parts = new ArrayList<>();
+
+		boolean hasGooglePayload = assistantMessage.getParts().stream().anyMatch(part -> googlePayload(part) != null);
+		List<byte[]> legacySignatures = hasGooglePayload ? new ArrayList<>()
+				: legacyThoughtSignatures(assistantMessage);
+		// Signatures that arrived on parts Gemini does not take back (thought text, an
+		// empty signature-only text part) are carried to the next function call without
+		// a signature of its own, which is where Gemini validates them.
+		Deque<byte[]> carriedSignatures = new ArrayDeque<>();
+
+		for (MessagePart part : assistantMessage.getParts()) {
+			if (part instanceof TextPart textPart) {
+				OpaquePayload payload = googlePayload(part);
+				if (StringUtils.hasText(textPart.text())) {
+					Part.Builder partBuilder = Part.builder().text(textPart.text());
+					if (payload != null) {
+						partBuilder.thoughtSignature(Base64.getDecoder().decode(payload.data()));
+					}
+					parts.add(partBuilder.build());
+				}
+				else if (payload != null) {
+					carriedSignatures.add(Base64.getDecoder().decode(payload.data()));
+				}
+			}
+			else if (part instanceof ReasoningPart) {
+				// Gemini takes thought signatures, not thought text.
+				OpaquePayload payload = googlePayload(part);
+				if (payload != null) {
+					carriedSignatures.add(Base64.getDecoder().decode(payload.data()));
+				}
+			}
+			else if (part instanceof ToolCallPart toolCallPart) {
+				AssistantMessage.ToolCall toolCall = toolCallPart.toolCall();
+				Part.Builder partBuilder = Part.builder()
+					.functionCall(FunctionCall.builder()
+						.name(toolCall.name())
+						.args(parseJsonToMap(toolCall.arguments()))
+						.build());
+				OpaquePayload payload = googlePayload(part);
+				if (payload != null) {
+					partBuilder.thoughtSignature(Base64.getDecoder().decode(payload.data()));
+				}
+				else if (!carriedSignatures.isEmpty()) {
+					partBuilder.thoughtSignature(carriedSignatures.poll());
+				}
+				else if (!legacySignatures.isEmpty()) {
+					partBuilder.thoughtSignature(legacySignatures.remove(0));
+				}
+				parts.add(partBuilder.build());
+			}
+			else if (part instanceof MediaPart mediaPart) {
+				parts.addAll(mediaToParts(List.of(mediaPart.media())));
+			}
+			else if (part instanceof UnknownPart unknownPart) {
+				if (GOOGLE_PROVIDER.equals(unknownPart.provider())) {
+					parts.add(Part.fromJson(unknownPart.rawJson()));
+				}
+				else if (logger.isDebugEnabled()) {
+					logger.debug("Skipping unknown part of kind " + unknownPart.kind() + " from provider "
+							+ unknownPart.provider() + " on replay to Gemini");
+				}
+			}
+			else if (part instanceof ToolResultPart) {
+				// Tool results go in a tool response message.
+				continue;
+			}
+			else {
+				throw new IllegalStateException("Unhandled message part type " + part.getClass().getName());
+			}
+		}
+		return parts;
+	}
+
+	private static @Nullable OpaquePayload googlePayload(MessagePart part) {
+		OpaquePayload payload = part.payload();
+		return (payload != null && GOOGLE_PROVIDER.equals(payload.provider())) ? payload : null;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static List<byte[]> legacyThoughtSignatures(AssistantMessage assistantMessage) {
+		Object signatures = assistantMessage.getMetadata().get(THOUGHT_SIGNATURES_METADATA_KEY);
+		if (signatures instanceof List<?> list && list.stream().allMatch(byte[].class::isInstance)) {
+			return new ArrayList<>((List<byte[]>) list);
+		}
+		return new ArrayList<>();
 	}
 
 	private static List<Part> mediaToParts(Collection<Media> media) {
@@ -435,7 +517,8 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 							: getDefaultUsage(null, options);
 					Usage cumulativeUsage = UsageCalculator.getCumulativeUsage(currentUsage, previousChatResponse);
 					ChatResponse chatResponse = new ChatResponse(generations,
-							toChatResponseMetadata(cumulativeUsage, generateContentResponse.modelVersion().get()));
+							toChatResponseMetadata(cumulativeUsage, generateContentResponse.modelVersion().orElse(""),
+									generateContentResponse.responseId().orElse("")));
 
 					observationContext.setResponse(chatResponse);
 					return chatResponse;
@@ -481,20 +564,24 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 				ResponseStream<GenerateContentResponse> responseStream = this.genAiClient.models
 					.generateContentStream(request.modelName, request.contents, request.config);
 
+				// One indexer per candidate index so parts of one candidate keep one
+				// index sequence across chunks.
+				Map<Integer, StreamingPartIndexer> indexers = new HashMap<>();
 				Flux<ChatResponse> chatResponseFlux = Flux.fromIterable(responseStream).concatMap(response -> {
 					List<Generation> generations = response.candidates()
 						.orElse(List.of())
 						.stream()
-						.map(this::responseCandidateToGeneration)
-						.flatMap(List::stream)
+						.map(candidate -> toGeneration(candidate,
+								indexers.computeIfAbsent(candidate.index().orElse(0),
+										key -> new StreamingPartIndexer())))
 						.toList();
 
 					var usage = response.usageMetadata();
 					Usage currentUsage = usage.isPresent() ? getDefaultUsage(usage.get(), options)
 							: getDefaultUsage(null, options);
 					Usage cumulativeUsage = UsageCalculator.getCumulativeUsage(currentUsage, previousChatResponse);
-					ChatResponse chatResponse = new ChatResponse(generations,
-							toChatResponseMetadata(cumulativeUsage, response.modelVersion().get()));
+					ChatResponse chatResponse = new ChatResponse(generations, toChatResponseMetadata(cumulativeUsage,
+							response.modelVersion().orElse(""), response.responseId().orElse("")));
 					return Flux.just(chatResponse);
 				});
 
@@ -518,7 +605,21 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 		});
 	}
 
+	/**
+	 * Converts a response candidate to a single generation whose message holds the Gemini
+	 * parts as ordered {@link MessagePart}s: thought text as {@link ReasoningPart}, text
+	 * as {@link TextPart}, function calls as {@link ToolCallPart}, inline data as
+	 * {@link MediaPart}, and everything else (server-side tool calls and responses,
+	 * executable code, code execution results, file data) as {@link UnknownPart}. A
+	 * thought signature becomes an {@link OpaquePayload} on the part that carried it.
+	 * @param candidate the response candidate
+	 * @return a single-element list holding the generation
+	 */
 	protected List<Generation> responseCandidateToGeneration(Candidate candidate) {
+		return List.of(toGeneration(candidate, null));
+	}
+
+	private Generation toGeneration(Candidate candidate, @Nullable StreamingPartIndexer indexer) {
 
 		// TODO - The candidateIndex (e.g. choice must be assigned to the generation).
 		int candidateIndex = candidate.index().orElse(0);
@@ -528,109 +629,121 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 		messageMetadata.put("candidateIndex", candidateIndex);
 		messageMetadata.put("finishReason", candidateFinishReason);
 
-		// Extract thought signatures from response parts if present
-		if (candidate.content().isPresent() && candidate.content().get().parts().isPresent()) {
-			List<Part> parts = candidate.content().get().parts().get();
-			List<byte[]> thoughtSignatures = parts.stream()
-				.filter(part -> part.thoughtSignature().isPresent())
-				.map(part -> part.thoughtSignature().get())
-				.toList();
+		List<Part> parts = candidate.content().flatMap(Content::parts).orElse(List.of());
 
-			if (!thoughtSignatures.isEmpty()) {
-				messageMetadata.put("thoughtSignatures", thoughtSignatures);
-			}
+		// Deprecated: signatures now travel as part payloads. Kept for one release so
+		// histories persisted by earlier versions keep replaying.
+		List<byte[]> thoughtSignatures = parts.stream()
+			.filter(part -> part.thoughtSignature().isPresent())
+			.map(part -> part.thoughtSignature().get())
+			.toList();
+		if (!thoughtSignatures.isEmpty()) {
+			messageMetadata.put(THOUGHT_SIGNATURES_METADATA_KEY, thoughtSignatures);
+		}
 
-			// Extract server-side tool invocations if present
-			List<Map<String, Object>> serverSideToolInvocations = new ArrayList<>();
-			for (Part part : parts) {
-				if (part.toolCall().isPresent()) {
-					com.google.genai.types.ToolCall tc = part.toolCall().get();
-					Map<String, Object> inv = new HashMap<>();
-					inv.put("type", "toolCall");
-					inv.put("id", tc.id().orElse(""));
-					inv.put("toolType", tc.toolType().map(Object::toString).orElse(""));
-					inv.put("args", tc.args().orElse(Map.of()));
-					serverSideToolInvocations.add(inv);
-				}
-				if (part.toolResponse().isPresent()) {
-					com.google.genai.types.ToolResponse tr = part.toolResponse().get();
-					Map<String, Object> inv = new HashMap<>();
-					inv.put("type", "toolResponse");
-					inv.put("id", tr.id().orElse(""));
-					inv.put("toolType", tr.toolType().map(Object::toString).orElse(""));
-					inv.put("response", tr.response().orElse(Map.of()));
-					serverSideToolInvocations.add(inv);
-				}
-			}
-			if (!serverSideToolInvocations.isEmpty()) {
-				messageMetadata.put("serverSideToolInvocations", serverSideToolInvocations);
-			}
+		List<Map<String, Object>> serverSideToolInvocations = serverSideToolInvocations(parts);
+		if (!serverSideToolInvocations.isEmpty()) {
+			messageMetadata.put("serverSideToolInvocations", serverSideToolInvocations);
 		}
 
 		ChatGenerationMetadata chatGenerationMetadata = ChatGenerationMetadata.builder()
 			.finishReason(candidateFinishReason.toString())
 			.build();
 
-		boolean isFunctionCall = candidate.content().isPresent() && candidate.content().get().parts().isPresent()
-				&& candidate.content().get().parts().get().stream().anyMatch(part -> part.functionCall().isPresent());
-
-		if (isFunctionCall) {
-			List<AssistantMessage.ToolCall> assistantToolCalls = candidate.content()
-				.get()
-				.parts()
-				.orElse(List.of())
-				.stream()
-				.filter(part -> part.functionCall().isPresent())
-				.map(part -> {
-					FunctionCall functionCall = part.functionCall().get();
-					var functionName = functionCall.name().orElse("");
-					String functionArguments = mapToJson(functionCall.args().orElse(Map.of()));
-					return new AssistantMessage.ToolCall("", "function", functionName, functionArguments);
-				})
-				.toList();
-
-			AssistantMessage assistantMessage = AssistantMessage.builder()
-				.content("")
-				.properties(messageMetadata)
-				.toolCalls(assistantToolCalls)
-				.build();
-
-			return List.of(new Generation(assistantMessage, chatGenerationMetadata));
+		AssistantMessage.Builder<?> messageBuilder = AssistantMessage.builder().properties(messageMetadata);
+		for (Part part : parts) {
+			MessagePart messagePart = toMessagePart(part);
+			messageBuilder.part(indexer != null ? indexer.stamp(messagePart) : messagePart);
 		}
-		else {
-			List<Generation> generations = candidate.content()
-				.get()
-				.parts()
-				.orElse(List.of())
-				.stream()
-				.filter(part -> part.toolCall().isEmpty() && part.toolResponse().isEmpty())
-				.map(part -> {
-					var partMessageMetadata = new HashMap<>(messageMetadata);
-					partMessageMetadata.put("isThought", part.thought().orElse(false));
-					return AssistantMessage.builder()
-						.content(part.text().orElse(""))
-						.properties(partMessageMetadata)
-						.build();
-				})
-				.map(assistantMessage -> new Generation(assistantMessage, chatGenerationMetadata))
-				.toList();
-
-			// If all parts were server-side tool invocations, return a single generation
-			// with empty text but with the server-side tool invocation metadata
-			if (generations.isEmpty()) {
-				AssistantMessage assistantMessage = AssistantMessage.builder()
-					.content("")
-					.properties(messageMetadata)
-					.build();
-				return List.of(new Generation(assistantMessage, chatGenerationMetadata));
-			}
-
-			return generations;
-		}
+		return new Generation(messageBuilder.build(), chatGenerationMetadata);
 	}
 
-	private ChatResponseMetadata toChatResponseMetadata(Usage usage, String modelVersion) {
-		return ChatResponseMetadata.builder().usage(usage).model(modelVersion).build();
+	private MessagePart toMessagePart(Part part) {
+		OpaquePayload payload = part.thoughtSignature()
+			.map(signature -> new OpaquePayload(GOOGLE_PROVIDER, PAYLOAD_THOUGHT_SIGNATURE,
+					Base64.getEncoder().encodeToString(signature)))
+			.orElse(null);
+		if (part.functionCall().isPresent()) {
+			FunctionCall functionCall = part.functionCall().get();
+			String functionArguments = mapToJson(functionCall.args().orElse(Map.of()));
+			return new ToolCallPart(
+					new AssistantMessage.ToolCall("", "function", functionCall.name().orElse(""), functionArguments),
+					payload, Map.of());
+		}
+		if (part.text().isPresent() || isSignatureOnly(part)) {
+			String text = part.text().orElse("");
+			if (part.thought().orElse(false)) {
+				return new ReasoningPart(text, null, false, payload, Map.of());
+			}
+			return new TextPart(text, payload, Map.of());
+		}
+		if (part.inlineData().isPresent() && part.inlineData().get().data().isPresent()
+				&& part.inlineData().get().mimeType().isPresent()) {
+			Blob blob = part.inlineData().get();
+			Media media = Media.builder()
+				.mimeType(MimeTypeUtils.parseMimeType(blob.mimeType().get()))
+				.data(blob.data().get())
+				.build();
+			return new MediaPart(media, payload, Map.of());
+		}
+		return new UnknownPart(GOOGLE_PROVIDER, unknownPartKind(part), part.toJson(), payload, Map.of());
+	}
+
+	private static boolean isSignatureOnly(Part part) {
+		return part.thoughtSignature().isPresent() && part.functionCall().isEmpty() && part.inlineData().isEmpty()
+				&& part.fileData().isEmpty() && part.toolCall().isEmpty() && part.toolResponse().isEmpty()
+				&& part.executableCode().isEmpty() && part.codeExecutionResult().isEmpty();
+	}
+
+	private static String unknownPartKind(Part part) {
+		if (part.toolCall().isPresent()) {
+			return "toolCall";
+		}
+		if (part.toolResponse().isPresent()) {
+			return "toolResponse";
+		}
+		if (part.executableCode().isPresent()) {
+			return "executableCode";
+		}
+		if (part.codeExecutionResult().isPresent()) {
+			return "codeExecutionResult";
+		}
+		if (part.fileData().isPresent()) {
+			return "fileData";
+		}
+		if (part.inlineData().isPresent()) {
+			return "inlineData";
+		}
+		return "unknown";
+	}
+
+	private static List<Map<String, Object>> serverSideToolInvocations(List<Part> parts) {
+		List<Map<String, Object>> serverSideToolInvocations = new ArrayList<>();
+		for (Part part : parts) {
+			if (part.toolCall().isPresent()) {
+				com.google.genai.types.ToolCall tc = part.toolCall().get();
+				Map<String, Object> inv = new HashMap<>();
+				inv.put("type", "toolCall");
+				inv.put("id", tc.id().orElse(""));
+				inv.put("toolType", tc.toolType().map(Object::toString).orElse(""));
+				inv.put("args", tc.args().orElse(Map.of()));
+				serverSideToolInvocations.add(inv);
+			}
+			if (part.toolResponse().isPresent()) {
+				com.google.genai.types.ToolResponse tr = part.toolResponse().get();
+				Map<String, Object> inv = new HashMap<>();
+				inv.put("type", "toolResponse");
+				inv.put("id", tr.id().orElse(""));
+				inv.put("toolType", tr.toolType().map(Object::toString).orElse(""));
+				inv.put("response", tr.response().orElse(Map.of()));
+				serverSideToolInvocations.add(inv);
+			}
+		}
+		return serverSideToolInvocations;
+	}
+
+	private ChatResponseMetadata toChatResponseMetadata(Usage usage, String modelVersion, String responseId) {
+		return ChatResponseMetadata.builder().usage(usage).model(modelVersion).id(responseId).build();
 	}
 
 	private Usage getDefaultUsage(@Nullable GenerateContentResponseUsageMetadata usageMetadata,
@@ -1213,6 +1326,28 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 		@Override
 		public String getName() {
 			return this.value;
+		}
+
+	}
+
+	/**
+	 * Gemini streams parts without a content block index. This indexer synthesizes one:
+	 * consecutive deltas of the same kind (thought text, answer text) share an index and
+	 * are streamed as partial parts; every other part is complete and gets its own index.
+	 */
+	private static final class StreamingPartIndexer {
+
+		private int index = -1;
+
+		private @Nullable Class<? extends MessagePart> lastDeltaKind;
+
+		MessagePart stamp(MessagePart part) {
+			boolean delta = part instanceof TextPart || part instanceof ReasoningPart;
+			if (!delta || part.getClass() != this.lastDeltaKind) {
+				this.index++;
+			}
+			this.lastDeltaKind = delta ? part.getClass() : null;
+			return delta ? StreamingParts.partial(part, this.index) : StreamingParts.complete(part, this.index);
 		}
 
 	}

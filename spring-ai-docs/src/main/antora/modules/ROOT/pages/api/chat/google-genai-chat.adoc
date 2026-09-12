@@ -576,22 +576,34 @@ String response = ChatClient.create(this.chatModel)
 
 === User-Controlled Tool Execution with Thought Signatures
 
-When using a manual tool execution loop, you must preserve thought signatures by keeping the original `AssistantMessage` (with its metadata) in the conversation history. Spring AI automatically attaches the signatures to the correct `functionCall` parts when converting messages.
+When using a manual tool execution loop, you must preserve thought signatures by keeping the original `AssistantMessage` in the conversation history.
+The response message holds the Gemini parts in order as `MessagePart`s: thought summaries as `ReasoningPart`, answer text as `TextPart`, function calls as `ToolCallPart`.
+A thought signature travels as the `OpaquePayload` of the part that carried it, which for function calling is the `ToolCallPart`.
+Spring AI attaches each signature back to exactly that `functionCall` part when converting messages.
 
 **Requirements for manual tool execution with thought signatures:**
 
-1. Extract thought signatures from the response metadata:
+1. If you need to inspect the signatures, read them from the parts:
 +
 [source,java]
 ----
 AssistantMessage assistantMessage = response.getResult().getOutput();
-Map<String, Object> metadata = assistantMessage.getMetadata();
-List<byte[]> thoughtSignatures = (List<byte[]>) metadata.get("thoughtSignatures");
+for (MessagePart part : assistantMessage.getParts()) {
+    if (part instanceof ToolCallPart toolCall && toolCall.payload() != null) {
+        // provider "google", kind "thought_signature", data is the signature base64-encoded
+        OpaquePayload signature = toolCall.payload();
+    }
+}
 ----
 
-2. When sending back function responses, include the original `AssistantMessage` with its metadata intact in your message history. Spring AI will automatically attach the thought signatures to the correct `functionCall` parts.
+2. When sending back function responses, include the original `AssistantMessage` in your message history.
+Spring AI will automatically attach the thought signatures to the correct `functionCall` parts.
 
 3. For Gemini 3 Pro, failing to preserve thought signatures during the current turn will result in HTTP 400 errors from the API.
+
+NOTE: For one release the message metadata still carries the previous `thoughtSignatures` list of byte arrays, and messages persisted with it are still replayed correctly.
+The key is deprecated; read the part payloads instead.
+Thought summaries are no longer separate generations with an `isThought` flag: a response is one generation whose `getReasoning()` returns the `ReasoningPart`s and whose `getText()` returns only the answer text.
 
 IMPORTANT: Only the current turn's function calls require thought signatures. When starting a new conversation turn (after completing a function calling round), you do not need to preserve the previous turn's signatures.
 
