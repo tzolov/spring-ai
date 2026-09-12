@@ -165,26 +165,12 @@ public class DeepSeekApi {
 	 * request.
 	 * @return Returns a {@link Flux} stream from chat completion chunks.
 	 */
-	@SuppressWarnings("NullAway")
 	public Flux<ChatCompletionChunk> chatCompletionStream(ChatCompletionRequest chatRequest,
 			HttpHeaders additionalHttpHeader) {
 
-		Assert.notNull(chatRequest, "The request body can not be null.");
-		Assert.isTrue(Boolean.TRUE.equals(chatRequest.stream()), "Request must set the stream property to true.");
-
 		AtomicBoolean isInsideTool = new AtomicBoolean(false);
 
-		return this.webClient.post()
-			.uri(this.getEndpoint(chatRequest))
-			.headers(headers -> headers.addAll(HttpHeaders.readOnlyHttpHeaders(additionalHttpHeader)))
-			.body(Mono.just(chatRequest), ChatCompletionRequest.class)
-			.retrieve()
-			.bodyToFlux(String.class)
-			// cancels the flux stream after the "[DONE]" is received.
-			.takeUntil(SSE_DONE_PREDICATE)
-			// filters out the "[DONE]" message.
-			.filter(SSE_DONE_PREDICATE.negate())
-			.mapNotNull(content -> jsonHelper.fromJson(content, ChatCompletionChunk.class))
+		return chatCompletionStreamRaw(chatRequest, additionalHttpHeader)
 			// Detect is the chunk is part of a streaming function call.
 			.map(chunk -> {
 				if (this.chunkMerger.isStreamingToolFunctionCall(chunk)) {
@@ -211,6 +197,52 @@ public class DeepSeekApi {
 			})
 			// Flux<Mono<ChatCompletionChunk>> -> Flux<ChatCompletionChunk>
 			.flatMap(mono -> mono);
+	}
+
+	/**
+	 * Creates a streaming chat response for the given chat conversation, returning the
+	 * chunks exactly as the server sends them. Unlike
+	 * {@link #chatCompletionStream(ChatCompletionRequest)} the chunks of a streamed tool
+	 * call are not merged, so the caller sees every argument delta.
+	 * @param chatRequest The chat completion request. Must have the stream property set
+	 * to true.
+	 * @return Returns a {@link Flux} stream of the raw chat completion chunks.
+	 * @since 2.1.0
+	 */
+	public Flux<ChatCompletionChunk> chatCompletionStreamRaw(ChatCompletionRequest chatRequest) {
+		return chatCompletionStreamRaw(chatRequest, new HttpHeaders());
+	}
+
+	/**
+	 * Creates a streaming chat response for the given chat conversation, returning the
+	 * chunks exactly as the server sends them. Unlike
+	 * {@link #chatCompletionStream(ChatCompletionRequest, HttpHeaders)} the chunks of a
+	 * streamed tool call are not merged, so the caller sees every argument delta.
+	 * @param chatRequest The chat completion request. Must have the stream property set
+	 * to true.
+	 * @param additionalHttpHeader Optional, additional HTTP headers to be added to the
+	 * request.
+	 * @return Returns a {@link Flux} stream of the raw chat completion chunks.
+	 * @since 2.1.0
+	 */
+	@SuppressWarnings("NullAway")
+	public Flux<ChatCompletionChunk> chatCompletionStreamRaw(ChatCompletionRequest chatRequest,
+			HttpHeaders additionalHttpHeader) {
+
+		Assert.notNull(chatRequest, "The request body can not be null.");
+		Assert.isTrue(Boolean.TRUE.equals(chatRequest.stream()), "Request must set the stream property to true.");
+
+		return this.webClient.post()
+			.uri(this.getEndpoint(chatRequest))
+			.headers(headers -> headers.addAll(HttpHeaders.readOnlyHttpHeaders(additionalHttpHeader)))
+			.body(Mono.just(chatRequest), ChatCompletionRequest.class)
+			.retrieve()
+			.bodyToFlux(String.class)
+			// cancels the flux stream after the "[DONE]" is received.
+			.takeUntil(SSE_DONE_PREDICATE)
+			// filters out the "[DONE]" message.
+			.filter(SSE_DONE_PREDICATE.negate())
+			.mapNotNull(content -> jsonHelper.fromJson(content, ChatCompletionChunk.class));
 	}
 
 	private String getEndpoint(ChatCompletionRequest request) {

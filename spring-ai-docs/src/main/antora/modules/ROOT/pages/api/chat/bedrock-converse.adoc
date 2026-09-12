@@ -795,13 +795,45 @@ AWS Bedrock pricing for prompt caching (approximate, varies by model):
 
 For most applications, use `ChatClient` with the auto-registered `ToolCallingAdvisor` — see xref:api/tools.adoc[Tool Calling]. For low-level control where you drive the loop yourself (for example, when combining tool calling with prompt caching), see xref:api/tools/chatmodel-tool-calling.adoc[ChatModel Tool Calling].
 
+=== Reasoning
+
+When extended thinking is enabled, the `reasoningContent` blocks of a response become `ReasoningPart` entries of the `AssistantMessage`, in the order Bedrock returned them, typically before the answer text and any tool calls.
+Signed reasoning is a part whose text is the reasoning and whose payload carries the signature.
+Redacted reasoning is a part flagged `redacted()` whose payload carries the Base64 encoded redacted content.
+Both payloads use the `bedrock` provider (see `BedrockProxyChatModel.BEDROCK_PROVIDER`, `PAYLOAD_SIGNATURE` and `PAYLOAD_REDACTED_CONTENT`).
+
+[source,java]
+----
+ChatResponse response = chatModel.call(new Prompt("Which number is larger: 9.11 or 9.8?"));
+AssistantMessage message = response.getResult().getOutput();
+
+for (ReasoningPart reasoning : message.getReasoning()) {
+    if (!reasoning.redacted()) {
+        System.out.println("Reasoning: " + reasoning.text());
+    }
+}
+System.out.println("Answer: " + message.getText());
+----
+
+A response is a single `Generation` holding all of its parts, so `getResult()` returns the reasoning, the text and the tool calls together.
+
+When streaming, each reasoning delta arrives as a partial `ReasoningPart` and each text delta as a partial `TextPart`, indexed by the Converse content block, so they can be appended as they arrive.
+Tool-use input deltas arrive the same way, as partial `ToolCallPart`s holding only that fragment of the JSON input.
+A partial `ToolCallPart` is not a tool call yet: `getToolCalls()` and `hasToolCalls()` ignore it, so nothing executes on it.
+The delta chunks are only visible on the raw `ChatModel.stream()`; `ChatClient` hides every chunk of a tool round, argument deltas included, because it executes the tools itself.
+The complete tool calls still arrive in the final chunk of the response, exactly as before.
+The signature closes the reasoning block as a payload-only delta.
+The aggregated response produced by `ChatClient` or `MessageAggregator` holds the complete signed `ReasoningPart` followed by the complete `TextPart` and the tool calls.
+
 === Reasoning with Tool Calls
 
-When extended thinking is enabled and the model decides to call a tool, the signed reasoning blocks from that response are automatically preserved and replayed in the follow-up request alongside the tool results.
+When extended thinking is enabled and the model decides to call a tool, the signed reasoning parts from that response are automatically preserved and replayed in the follow-up request alongside the tool results.
 Amazon Bedrock requires those reasoning blocks to be present in the replay — omitting them causes an API error.
+Reasoning parts without a Bedrock payload, for example reasoning produced by another provider, are skipped on replay because Bedrock rejects unsigned reasoning.
 
 No special configuration is needed.
 Spring AI handles the replay transparently whether you use the auto-managed tool loop (`ChatClient` with `ToolCallingAdvisor`) or drive the loop manually via `ToolCallingManager`.
+Any `AssistantMessage` carrying Bedrock reasoning parts replays correctly, including messages restored from a persisted conversation.
 
 == Structured Output [[structured-output]]
 

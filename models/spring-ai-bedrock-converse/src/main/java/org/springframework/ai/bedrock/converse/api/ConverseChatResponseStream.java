@@ -17,6 +17,7 @@
 package org.springframework.ai.bedrock.converse.api;
 
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,9 +38,16 @@ import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamMetada
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamResponseHandler;
 import software.amazon.awssdk.services.bedrockruntime.model.MessageStopEvent;
+import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlockDelta;
 import software.amazon.awssdk.services.bedrockruntime.model.TokenUsage;
 
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.part.MessagePart;
+import org.springframework.ai.chat.messages.part.OpaquePayload;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
@@ -51,8 +59,17 @@ import org.springframework.util.Assert;
 /**
  * Sends a {@link ConverseStreamRequest} to Bedrock and returns {@link ChatResponse}
  * stream.
+ * <p>
+ * Each content block delta is emitted as a partial {@link MessagePart} indexed by the
+ * Converse content block index: text and reasoning deltas, the reasoning signature and
+ * redacted content as payload-only deltas, and the started tool use and each of its input
+ * deltas as partial {@link ToolCallPart}s that are not tool calls yet. The tool-use input
+ * is also buffered and emitted as complete {@link ToolCallPart}s on the final chunk,
+ * exactly as before, so {@link org.springframework.ai.chat.model.MessageAggregator}
+ * rebuilds the message from the parts and tool execution still happens on that chunk.
  *
  * @author Jared Rufer
+ * @author Christian Tzolov
  * @since 1.1.0
  */
 public class ConverseChatResponseStream implements ConverseStreamResponseHandler.Visitor {
@@ -103,9 +120,10 @@ public class ConverseChatResponseStream implements ConverseStreamResponseHandler
 	@Override
 	public void visitContentBlockStart(ContentBlockStartEvent event) {
 		if (ContentBlockStart.Type.TOOL_USE.equals(event.start().type())) {
-			this.toolUseMap.put(event.contentBlockIndex(),
-					new StreamingToolCallBuilder().id(event.start().toolUse().toolUseId())
-						.name(event.start().toolUse().name()));
+			String id = event.start().toolUse().toolUseId();
+			String name = event.start().toolUse().name();
+			this.toolUseMap.put(event.contentBlockIndex(), new StreamingToolCallBuilder().id(id).name(name));
+			this.emitToolCallDelta(event.contentBlockIndex(), id, name, "");
 		}
 	}
 
@@ -114,11 +132,41 @@ public class ConverseChatResponseStream implements ConverseStreamResponseHandler
 		StreamingToolCallBuilder toolCallBuilder = this.toolUseMap.get(event.contentBlockIndex());
 
 		if (toolCallBuilder != null) {
-			toolCallBuilder.delta(event.delta().toolUse().input());
+			String inputDelta = event.delta().toolUse().input();
+			toolCallBuilder.delta(inputDelta);
+			this.emitToolCallDelta(event.contentBlockIndex(), toolCallBuilder.id(), toolCallBuilder.name(), inputDelta);
 		}
 		else if (ContentBlockDelta.Type.TEXT.equals(event.delta().type())) {
-			this.emitChatResponse(new Generation(AssistantMessage.builder().content(event.delta().text()).build()));
+			this.emitPart(StreamingParts.partial(TextPart.of(event.delta().text()), event.contentBlockIndex()));
 		}
+		else if (ContentBlockDelta.Type.REASONING_CONTENT.equals(event.delta().type())) {
+			ReasoningPart reasoningDelta = toReasoningDelta(event.delta().reasoningContent());
+			if (reasoningDelta != null) {
+				this.emitPart(StreamingParts.partial(reasoningDelta, event.contentBlockIndex()));
+			}
+		}
+	}
+
+	/**
+	 * A reasoning delta carries either text, the signature that closes the block, or
+	 * redacted content. The signature and the redacted content are emitted as
+	 * payload-only deltas of the same block.
+	 */
+	private static @Nullable ReasoningPart toReasoningDelta(ReasoningContentBlockDelta delta) {
+		if (delta.text() != null) {
+			return ReasoningPart.of(delta.text());
+		}
+		if (delta.signature() != null) {
+			return new ReasoningPart(null, null, false, new OpaquePayload(ConverseApiUtils.BEDROCK_PROVIDER,
+					ConverseApiUtils.PAYLOAD_SIGNATURE, delta.signature()), Map.of());
+		}
+		if (delta.redactedContent() != null) {
+			return new ReasoningPart(null, null, true,
+					new OpaquePayload(ConverseApiUtils.BEDROCK_PROVIDER, ConverseApiUtils.PAYLOAD_REDACTED_CONTENT,
+							Base64.getEncoder().encodeToString(delta.redactedContent().asByteArray())),
+					Map.of());
+		}
+		return null;
 	}
 
 	@Override
@@ -137,20 +185,34 @@ public class ConverseChatResponseStream implements ConverseStreamResponseHandler
 			.finishReason(this.stopReason.get())
 			.build();
 
-		List<AssistantMessage.ToolCall> toolCalls = this.toolUseMap.entrySet()
+		// The buffered tool calls are complete parts at their content block index. The
+		// final chunk keeps an empty text as it always had.
+		List<MessagePart> toolCallParts = this.toolUseMap.entrySet()
 			.stream()
 			.sorted(Map.Entry.comparingByKey())
-			.map(Map.Entry::getValue)
-			.map(StreamingToolCallBuilder::build)
+			.map(entry -> StreamingParts.complete(ToolCallPart.of(entry.getValue().build()), entry.getKey()))
 			.toList();
 
-		if (!toolCalls.isEmpty()) {
-			this.emitChatResponse(new Generation(AssistantMessage.builder().content("").toolCalls(toolCalls).build(),
-					generationMetadata));
+		this.emitChatResponse(new Generation(AssistantMessage.builder().parts(toolCallParts).content("").build(),
+				generationMetadata));
+	}
+
+	private void emitPart(MessagePart part) {
+		this.emitChatResponse(new Generation(AssistantMessage.builder().part(part).build()));
+	}
+
+	/**
+	 * Emits a partial {@link ToolCallPart} holding only the given input delta. A partial
+	 * part is not a tool call (see {@link AssistantMessage#getToolCalls()}), so the chunk
+	 * cannot trigger tool execution; the complete call follows on the final chunk.
+	 */
+	private void emitToolCallDelta(int contentBlockIndex, @Nullable String id, @Nullable String name,
+			String inputDelta) {
+		if (id == null || name == null) {
+			return;
 		}
-		else {
-			this.emitChatResponse(new Generation(AssistantMessage.builder().content("").build(), generationMetadata));
-		}
+		ToolCallPart delta = ToolCallPart.of(new AssistantMessage.ToolCall(id, "function", name, inputDelta));
+		this.emitPart(StreamingParts.partial(delta, contentBlockIndex));
 	}
 
 	private void mergeNativeTokenUsage(TokenUsage tokenUsage) {

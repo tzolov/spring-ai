@@ -16,12 +16,19 @@
 
 package org.springframework.ai.bedrock.converse;
 
-import java.util.Collections;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.part.OpaquePayload;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,35 +38,82 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author guan xu
  */
+@SuppressWarnings("removal")
 class BedrockAssistantMessageTests {
+
+	private static final BedrockReasoningContent SIGNED = BedrockReasoningContent.builder()
+		.text("think")
+		.signature("sig-1")
+		.build();
+
+	private static final ReasoningPart SIGNED_PART = new ReasoningPart("think", null, false,
+			new OpaquePayload(BedrockProxyChatModel.BEDROCK_PROVIDER, BedrockProxyChatModel.PAYLOAD_SIGNATURE, "sig-1"),
+			Map.of());
 
 	@Test
 	void copyPreservesReasoningContents() {
-		List<BedrockReasoningContent> reasoningContents = Collections.singletonList(null);
 		BedrockAssistantMessage original = BedrockAssistantMessage.builder()
 			.content("hello")
-			.reasoningContents(reasoningContents)
+			.reasoningContents(List.of(SIGNED))
 			.build();
 
 		BedrockAssistantMessage copy = (BedrockAssistantMessage) original.copy();
 
 		assertThat(copy).isNotSameAs(original);
-		assertThat(copy.getReasoningContents()).hasSize(1);
+		assertThat(copy).isEqualTo(original);
+		assertThat(copy.getReasoningContents()).containsExactly(SIGNED);
+		assertThat(copy.getParts()).containsExactly(SIGNED_PART, TextPart.of("hello"));
 	}
 
 	@Test
 	void promptCopyPreservesBedrockAssistantMessage() {
-		List<BedrockReasoningContent> reasoningContents = Collections.singletonList(null);
 		BedrockAssistantMessage original = BedrockAssistantMessage.builder()
 			.content("hello")
-			.reasoningContents(reasoningContents)
+			.reasoningContents(List.of(SIGNED))
 			.build();
 
 		Prompt copy = new Prompt(List.of(original)).copy();
 
 		Message copied = copy.getInstructions().get(0);
 		assertThat(copied).isInstanceOf(BedrockAssistantMessage.class);
-		assertThat(((BedrockAssistantMessage) copied).getReasoningContents()).hasSize(1);
+		assertThat(((BedrockAssistantMessage) copied).getReasoningContents()).containsExactly(SIGNED);
+	}
+
+	@Test
+	void legacyReasoningContentsAreMaterializedAsReasoningPartsBeforeTheText() {
+		byte[] redacted = "opaque".getBytes(StandardCharsets.UTF_8);
+		BedrockAssistantMessage message = BedrockAssistantMessage.builder()
+			.content("")
+			.toolCalls(List.of(new AssistantMessage.ToolCall("id", "function", "getWeather", "{}")))
+			.reasoningContents(List.of(SIGNED, BedrockReasoningContent.builder().redactedContent(redacted).build()))
+			.build();
+
+		assertThat(message.getParts()).hasSize(4);
+		assertThat(message.getParts().get(0)).isEqualTo(SIGNED_PART);
+		ReasoningPart redactedPart = (ReasoningPart) message.getParts().get(1);
+		assertThat(redactedPart.redacted()).isTrue();
+		assertThat(redactedPart.payload().kind()).isEqualTo(BedrockProxyChatModel.PAYLOAD_REDACTED_CONTENT);
+		assertThat(redactedPart.payload().data()).isEqualTo(Base64.getEncoder().encodeToString(redacted));
+		assertThat(message.getParts().get(2)).isEqualTo(TextPart.of(""));
+		assertThat(message.getParts().get(3)).isInstanceOf(ToolCallPart.class);
+		assertThat(message.getReasoning()).hasSize(2);
+		assertThat(message.getReasoningContents()).hasSize(2);
+		assertThat(message.getReasoningContents().get(1).getRedactedContent()).isEqualTo(redacted);
+	}
+
+	@Test
+	void explicitPartsAreHonoredAndReasoningContentsDerivedFromThem() {
+		BedrockAssistantMessage message = BedrockAssistantMessage.builder()
+			.part(SIGNED_PART)
+			.part(new ReasoningPart("foreign", null, false, new OpaquePayload("anthropic", "signature", "x"), Map.of()))
+			.part(TextPart.of("answer"))
+			.build();
+
+		assertThat(message.getParts()).hasSize(3);
+		assertThat(message.getText()).isEqualTo("answer");
+		// Only Bedrock reasoning is visible through the deprecated view
+		assertThat(message.getReasoningContents()).containsExactly(SIGNED);
+		assertThat(message.hasReasoningContents()).isTrue();
 	}
 
 }

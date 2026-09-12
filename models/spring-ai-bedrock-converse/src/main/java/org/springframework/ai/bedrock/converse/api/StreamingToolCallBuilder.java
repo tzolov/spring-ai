@@ -48,6 +48,24 @@ public class StreamingToolCallBuilder {
 		return this;
 	}
 
+	/**
+	 * The tool call id, once set.
+	 * @return the id, or {@code null}
+	 * @since 2.1.0
+	 */
+	public @Nullable String id() {
+		return this.id;
+	}
+
+	/**
+	 * The tool name, once set.
+	 * @return the name, or {@code null}
+	 * @since 2.1.0
+	 */
+	public @Nullable String name() {
+		return this.name;
+	}
+
 	public AssistantMessage.ToolCall build() {
 		Assert.state(this.id != null, "Tool call id must not be null");
 		Assert.state(this.name != null, "Tool call name must not be null");

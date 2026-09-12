@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -342,53 +343,41 @@ public final class OpenAiChatModel implements ChatModel {
 				});
 			});
 
-			// Next, aggregate CCCs that deal with tool calls together
+			// Next, buffer the chunks of a tool call so the complete call is emitted
+			// once (merged by ChunkMerger), while each argument delta is streamed out
+			// right away as a partial ToolCallPart that is not a tool call yet.
 			AtomicBoolean isInsideTool = new AtomicBoolean(false);
-			Flux<ChatCompletion> aggregatedChatCompletions = chunks.doOnNext(chunk -> {
+			List<ChatCompletionChunk> toolCallBuffer = new ArrayList<>();
+			Supplier<ChatResponse> flushToolCallBuffer = () -> {
+				List<ChatCompletionChunk> buffered = List.copyOf(toolCallBuffer);
+				toolCallBuffer.clear();
+				isInsideTool.set(false);
+				return toChatResponse(ChunkMerger.chunkToChatCompletion(ChunkMerger.mergeChunks(buffered)), request,
+						roleMap, reasoningMap, indexerMap);
+			};
+			Flux<ChatResponse> chatResponses = chunks.concatMap(chunk -> {
 				if (ChunkMerger.hasToolCall(chunk)) {
 					isInsideTool.set(true);
 				}
-			}).bufferUntil(chunk -> {
-				if (isInsideTool.get() && ChunkMerger.toolCallsDone(chunk)) {
-					isInsideTool.set(false);
-					return true;
+				if (!isInsideTool.get()) {
+					return Flux.just(toChatResponse(ChunkMerger.chunkToChatCompletion(chunk), request, roleMap,
+							reasoningMap, indexerMap));
 				}
-				return !isInsideTool.get();
-			}).map(ChunkMerger::mergeChunks).map(ChunkMerger::chunkToChatCompletion);
-
-			Flux<ChatResponse> chatResponses = aggregatedChatCompletions.map(chatCompletion -> {
-				String id = chatCompletion.id();
-				List<Generation> generations = chatCompletion.choices().stream().map(choice -> {
-					roleMap.putIfAbsent(id, choice.message()._role().asString().isPresent()
-							? choice.message()._role().asStringOrThrow() : "");
-
-					// Accumulate reasoning fragments across the streamed chunks so the
-					// final response of this stream carries the full reasoning content,
-					// surviving last-wins metadata aggregation (e.g. MessageAggregator).
-					String choiceKey = id + ":" + choice.index();
-					String accumulatedReasoning = reasoningMap.merge(choiceKey, getReasoningContent(choice),
-							String::concat);
-					StreamingPartIndexer indexer = indexerMap.computeIfAbsent(choiceKey,
-							key -> new StreamingPartIndexer());
-
-					Map<String, Object> metadata = Map.of("id", id, //
-							"role", roleMap.getOrDefault(id, ""), //
-							"index", choice.index(), //
-							"finishReason", choice.finishReason().value(), //
-							"refusal", choice.message().refusal().orElse(""), //
-							"annotations", choice.message().annotations().orElseGet(List::of), //
-							REASONING_CONTENT, accumulatedReasoning //
-					);
-
-					return buildGeneration(choice, metadata, request, indexer);
-				}).toList();
-				Optional<CompletionUsage> usage = chatCompletion.usage();
-				CompletionUsage usageVal = usage.orElse(null);
-				Usage currentUsage = usageVal != null ? getDefaultUsage(usageVal) : new EmptyUsage();
-				Usage accumulated = UsageCalculator.getCumulativeUsage(currentUsage, null);
-				return new ChatResponse(generations, from(chatCompletion, accumulated));
-
-			});
+				toolCallBuffer.add(chunk);
+				List<ChatResponse> emitted = new ArrayList<>(2);
+				ChatResponse deltaResponse = toolCallDeltaResponse(chunk, roleMap, indexerMap);
+				if (deltaResponse != null) {
+					emitted.add(deltaResponse);
+				}
+				if (ChunkMerger.toolCallsDone(chunk)) {
+					emitted.add(flushToolCallBuffer.get());
+				}
+				return Flux.fromIterable(emitted);
+			})
+				// A stream that ends inside a tool call (finish_reason "length", or a
+				// server that never sends "tool_calls") still yields the merged chunk.
+				.concatWith(Flux
+					.defer(() -> toolCallBuffer.isEmpty() ? Flux.empty() : Flux.just(flushToolCallBuffer.get())));
 
 			Flux<ChatResponse> observedResponses = chatResponses.doOnError(observation::error)
 				.doFinally(s -> observation.stop())
@@ -397,6 +386,81 @@ public final class OpenAiChatModel implements ChatModel {
 			return new MessageAggregator().aggregate(observedResponses, observationContext::setResponse);
 
 		});
+	}
+
+	/**
+	 * Converts one streamed (possibly merged) chunk into a {@link ChatResponse}.
+	 */
+	private ChatResponse toChatResponse(ChatCompletion chatCompletion, ChatCompletionCreateParams request,
+			ConcurrentHashMap<String, String> roleMap, ConcurrentHashMap<String, String> reasoningMap,
+			ConcurrentHashMap<String, StreamingPartIndexer> indexerMap) {
+		String id = chatCompletion.id();
+		List<Generation> generations = chatCompletion.choices().stream().map(choice -> {
+			roleMap.putIfAbsent(id,
+					choice.message()._role().asString().isPresent() ? choice.message()._role().asStringOrThrow() : "");
+
+			// Accumulate reasoning fragments across the streamed chunks so the
+			// final response of this stream carries the full reasoning content,
+			// surviving last-wins metadata aggregation (e.g. MessageAggregator).
+			String choiceKey = id + ":" + choice.index();
+			String accumulatedReasoning = reasoningMap.merge(choiceKey, getReasoningContent(choice), String::concat);
+			StreamingPartIndexer indexer = indexerMap.computeIfAbsent(choiceKey, key -> new StreamingPartIndexer());
+
+			Map<String, Object> metadata = Map.of("id", id, //
+					"role", roleMap.getOrDefault(id, ""), //
+					"index", choice.index(), //
+					"finishReason", choice.finishReason().value(), //
+					"refusal", choice.message().refusal().orElse(""), //
+					"annotations", choice.message().annotations().orElseGet(List::of), //
+					REASONING_CONTENT, accumulatedReasoning //
+			);
+
+			return buildGeneration(choice, metadata, request, indexer);
+		}).toList();
+		Optional<CompletionUsage> usage = chatCompletion.usage();
+		CompletionUsage usageVal = usage.orElse(null);
+		Usage currentUsage = usageVal != null ? getDefaultUsage(usageVal) : new EmptyUsage();
+		Usage accumulated = UsageCalculator.getCumulativeUsage(currentUsage, null);
+		return new ChatResponse(generations, from(chatCompletion, accumulated));
+	}
+
+	/**
+	 * The partial {@link ToolCallPart}s for the tool-call deltas of one raw streamed
+	 * chunk, or {@code null} when the chunk carries none (or only deltas whose call has
+	 * not been identified by id and name yet). Such a chunk has no text and, because
+	 * partial parts are not tool calls, {@code hasToolCalls()} is false on it.
+	 */
+	private static @Nullable ChatResponse toolCallDeltaResponse(ChatCompletionChunk chunk,
+			ConcurrentHashMap<String, String> roleMap, ConcurrentHashMap<String, StreamingPartIndexer> indexerMap) {
+		String id = chunk.id();
+		List<Generation> generations = new ArrayList<>();
+		for (Choice choice : chunk.choices()) {
+			List<ToolCall> deltas = choice.delta().toolCalls().orElseGet(List::of);
+			if (deltas.isEmpty()) {
+				continue;
+			}
+			StreamingPartIndexer indexer = indexerMap.computeIfAbsent(id + ":" + choice.index(),
+					key -> new StreamingPartIndexer());
+			AssistantMessage.Builder<?> messageBuilder = AssistantMessage.builder()
+				.properties(Map.of("id", id, "role", roleMap.getOrDefault(id, ""), "index", choice.index()));
+			boolean hasPart = false;
+			for (ToolCall delta : deltas) {
+				String arguments = delta.function().flatMap(Function::arguments).orElse("");
+				MessagePart part = indexer.toolCallDelta(delta.index(), delta.id().orElse(null),
+						delta.function().flatMap(Function::name).orElse(null), arguments);
+				if (part != null) {
+					messageBuilder.part(part);
+					hasPart = true;
+				}
+			}
+			if (hasPart) {
+				generations.add(new Generation(messageBuilder.build()));
+			}
+		}
+		if (generations.isEmpty()) {
+			return null;
+		}
+		return new ChatResponse(generations, ChatResponseMetadata.builder().id(id).model(chunk.model()).build());
 	}
 
 	/**
@@ -1286,8 +1350,9 @@ public final class OpenAiChatModel implements ChatModel {
 
 	/**
 	 * Assigns stream part indices per choice: consecutive deltas of the same kind
-	 * (reasoning or text) share an index as partial parts; every other part is complete
-	 * and gets its own index.
+	 * (reasoning or text) share an index as partial parts; a tool call keeps one index
+	 * from its first argument delta to the complete part, keyed by tool call id; every
+	 * other part is complete and gets its own index.
 	 */
 	private static final class StreamingPartIndexer {
 
@@ -1295,13 +1360,51 @@ public final class OpenAiChatModel implements ChatModel {
 
 		private @Nullable Class<? extends MessagePart> lastDeltaKind;
 
+		private final Map<String, Integer> toolCallIndexById = new HashMap<>();
+
+		// id and name of the tool call streamed at each SDK delta index
+		private final Map<Long, AssistantMessage.ToolCall> startedToolCalls = new HashMap<>();
+
 		MessagePart stamp(MessagePart part) {
+			if (part instanceof ToolCallPart toolCallPart) {
+				this.lastDeltaKind = null;
+				return StreamingParts.complete(part, toolCallIndex(toolCallPart.toolCall().id()));
+			}
 			boolean delta = part instanceof TextPart || part instanceof ReasoningPart;
 			if (!delta || part.getClass() != this.lastDeltaKind) {
 				this.index++;
 			}
 			this.lastDeltaKind = delta ? part.getClass() : null;
 			return delta ? StreamingParts.partial(part, this.index) : StreamingParts.complete(part, this.index);
+		}
+
+		/**
+		 * A partial tool call part for one SDK tool-call delta, or {@code null} while the
+		 * call at that delta index has not been identified by id and name yet.
+		 * Continuation deltas may omit the id or send an empty one (DeepSeek).
+		 */
+		@Nullable MessagePart toolCallDelta(long deltaIndex, @Nullable String id, @Nullable String name, String argumentsDelta) {
+			if (StringUtils.hasText(id) && StringUtils.hasText(name)) {
+				this.startedToolCalls.put(deltaIndex, new AssistantMessage.ToolCall(id, "function", name, ""));
+			}
+			AssistantMessage.ToolCall started = this.startedToolCalls.get(deltaIndex);
+			if (started == null) {
+				return null;
+			}
+			this.lastDeltaKind = null;
+			ToolCallPart part = ToolCallPart
+				.of(new AssistantMessage.ToolCall(started.id(), "function", started.name(), argumentsDelta));
+			return StreamingParts.partial(part, toolCallIndex(started.id()));
+		}
+
+		private int toolCallIndex(String id) {
+			Integer existing = this.toolCallIndexById.get(id);
+			if (existing != null) {
+				return existing;
+			}
+			this.index++;
+			this.toolCallIndexById.put(id, this.index);
+			return this.index;
 		}
 
 	}

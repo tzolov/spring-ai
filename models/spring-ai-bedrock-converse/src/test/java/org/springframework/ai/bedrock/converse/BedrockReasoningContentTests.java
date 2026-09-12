@@ -17,11 +17,16 @@
 package org.springframework.ai.bedrock.converse;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
+
+import org.springframework.ai.chat.messages.part.OpaquePayload;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
@@ -31,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
  *
  * @author Soby Chacko
  */
+@SuppressWarnings("removal")
 class BedrockReasoningContentTests {
 
 	@Test
@@ -108,6 +114,41 @@ class BedrockReasoningContentTests {
 		String str = content.toString();
 
 		assertThat(str).doesNotContain("secret reasoning").doesNotContain("secret-sig").contains("***redacted***");
+	}
+
+	@Test
+	void signedContentConvertsToAndFromAReasoningPart() {
+		BedrockReasoningContent content = BedrockReasoningContent.builder().text("think").signature("sig-1").build();
+
+		ReasoningPart part = content.toReasoningPart();
+
+		assertThat(part.text()).isEqualTo("think");
+		assertThat(part.redacted()).isFalse();
+		assertThat(part.payload()).isEqualTo(new OpaquePayload(BedrockProxyChatModel.BEDROCK_PROVIDER,
+				BedrockProxyChatModel.PAYLOAD_SIGNATURE, "sig-1"));
+		assertThat(BedrockReasoningContent.from(part)).isEqualTo(content);
+	}
+
+	@Test
+	void redactedContentConvertsToAndFromAReasoningPart() {
+		byte[] bytes = "opaque".getBytes(StandardCharsets.UTF_8);
+		BedrockReasoningContent content = BedrockReasoningContent.builder().redactedContent(bytes).build();
+
+		ReasoningPart part = content.toReasoningPart();
+
+		assertThat(part.text()).isNull();
+		assertThat(part.redacted()).isTrue();
+		assertThat(part.payload().kind()).isEqualTo(BedrockProxyChatModel.PAYLOAD_REDACTED_CONTENT);
+		assertThat(part.payload().data()).isEqualTo(Base64.getEncoder().encodeToString(bytes));
+		assertThat(BedrockReasoningContent.from(part)).isEqualTo(content);
+	}
+
+	@Test
+	void reasoningPartsOfOtherProvidersOrWithoutPayloadAreNotBedrockContent() {
+		assertThat(BedrockReasoningContent.from(ReasoningPart.of("plain"))).isNull();
+		assertThat(BedrockReasoningContent
+			.from(new ReasoningPart("t", null, false, new OpaquePayload("anthropic", "signature", "sig"), Map.of())))
+			.isNull();
 	}
 
 	@Test

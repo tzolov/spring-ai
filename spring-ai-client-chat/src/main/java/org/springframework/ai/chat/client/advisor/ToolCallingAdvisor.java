@@ -19,6 +19,7 @@ package org.springframework.ai.chat.client.advisor;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.jspecify.annotations.Nullable;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
@@ -32,6 +33,8 @@ import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.ToolAdvisor;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -321,7 +324,25 @@ public class ToolCallingAdvisor implements CallAdvisor, StreamAdvisor, ToolAdvis
 					previousAccumulatedResponse))
 			.concatWith(Flux.defer(() -> this.handleToolCallRecursion(aggregatedResponseRef.get(), finalRequest,
 					fullTurnHistory, streamAdvisorChain, originalRequest, optionsCopy, usageAccumulator)))
-			.filter(ccr -> !this.toolExecutionEligibilityChecker.isToolCallResponse(ccr.chatResponse()));
+			.filter(ccr -> !this.toolExecutionEligibilityChecker.isToolCallResponse(ccr.chatResponse())
+					&& !carriesPartialToolCallParts(ccr.chatResponse()));
+	}
+
+	/**
+	 * Whether any generation of the response carries a partial {@link ToolCallPart}, that
+	 * is a streamed tool-call argument delta. Such a part is not a tool call yet, so the
+	 * eligibility checker lets the chunk through; it still belongs to the tool round and
+	 * must not reach outer advisors, where a memory advisor would assemble the deltas
+	 * into a tool call and persist an assistant message with a tool call but no tool
+	 * response. The complete call remains subject to the eligibility checker only.
+	 */
+	private static boolean carriesPartialToolCallParts(@Nullable ChatResponse chatResponse) {
+		return chatResponse != null && chatResponse.getResults()
+			.stream()
+			.anyMatch(generation -> generation.getOutput()
+				.getParts()
+				.stream()
+				.anyMatch(part -> part instanceof ToolCallPart && StreamingParts.isPartial(part)));
 	}
 
 	/**

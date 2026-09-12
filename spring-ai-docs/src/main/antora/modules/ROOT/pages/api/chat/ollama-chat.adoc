@@ -274,8 +274,9 @@ ChatResponse response = chatModel.call(
     ));
 
 // Access the thinking process
-String thinking = response.getResult().getMetadata().get("thinking");
-String answer = response.getResult().getOutput().getText();
+AssistantMessage message = response.getResult().getOutput();
+List<ReasoningPart> thinking = message.getReasoning();
+String answer = message.getText();
 ----
 
 You can also disable thinking explicitly:
@@ -331,7 +332,8 @@ ChatResponse response = chatModel.call(
 
 === Accessing Thinking Content
 
-The thinking content is available in the response metadata:
+The thinking content is a `ReasoningPart` in the `AssistantMessage` parts, available through `getReasoning()`.
+The parts are ordered as Ollama returned them: the reasoning first, then the answer text, then any tool calls.
 
 [source,java]
 ----
@@ -344,20 +346,29 @@ ChatResponse response = chatModel.call(
             .build()
     ));
 
+AssistantMessage message = response.getResult().getOutput();
+
 // Get the reasoning process
-String thinking = response.getResult().getMetadata().get("thinking");
-System.out.println("Reasoning: " + thinking);
+for (ReasoningPart reasoning : message.getReasoning()) {
+    System.out.println("Reasoning: " + reasoning.text());
+}
 // Output: "17 × 20 = 340, 17 × 3 = 51, 340 + 51 = 391"
 
 // Get the final answer
-String answer = response.getResult().getOutput().getText();
+String answer = message.getText();
 System.out.println("Answer: " + answer);
 // Output: "The answer is 391"
 ----
 
+When an `AssistantMessage` with reasoning is sent back in a later request, for example from a chat memory, the reasoning text is replayed to Ollama in the `thinking` field of the assistant message.
+
+The same text is also written to the `thinking` key of the message metadata and of the generation metadata.
+That key is deprecated and will be removed in a future release; new code should read the parts.
+
 === Streaming with Thinking
 
-Thinking mode works with streaming responses as well:
+Thinking mode works with streaming responses as well.
+Each chunk carries its thinking delta as a partial `ReasoningPart` and its text delta as a partial `TextPart`, so you can append them as they arrive:
 
 [source,java]
 ----
@@ -370,20 +381,25 @@ Flux<ChatResponse> stream = chatModel.stream(
             .build()
     ));
 
-stream.subscribe(response -> {
-    String thinking = response.getResult().getMetadata().get("thinking");
-    String content = response.getResult().getOutput().getText();
+StringBuilder thinking = new StringBuilder();
+StringBuilder answer = new StringBuilder();
 
-    if (thinking != null && !thinking.isEmpty()) {
-        System.out.println("[Thinking] " + thinking);
+stream.subscribe(response -> {
+    AssistantMessage message = response.getResult().getOutput();
+
+    for (ReasoningPart part : message.getReasoning()) {
+        thinking.append(part.text());
     }
-    if (content != null && !content.isEmpty()) {
-        System.out.println("[Response] " + content);
+    if (message.getText() != null) {
+        answer.append(message.getText());
     }
 });
 ----
 
-NOTE: When thinking is disabled or not set, the `thinking` metadata field will be null or empty.
+A thinking-only chunk has no text part, so `getText()` returns `null` for it.
+The aggregated response produced by `ChatClient` or `MessageAggregator` contains the complete `ReasoningPart` followed by the complete `TextPart`.
+
+NOTE: When thinking is disabled or not set, `getReasoning()` is empty and the deprecated `thinking` metadata field is absent.
 
 == Multimodal
 

@@ -27,6 +27,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.ai.chat.messages.part.MediaPart;
 import org.springframework.ai.chat.messages.part.MessagePart;
 import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
 import org.springframework.ai.chat.messages.part.TextPart;
 import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.content.Media;
@@ -41,10 +42,11 @@ import org.springframework.util.Assert;
  * <p>
  * The message content is an ordered list of {@link MessagePart}s. The text, tool calls
  * and media accessors are views over that list: {@link #getText()} joins the
- * {@link TextPart}s, {@link #getToolCalls()} selects the {@link ToolCallPart}s and
- * {@link #getMedia()} selects the {@link MediaPart}s, in part order. Messages built
- * through the legacy constructor or builder setters get their parts in the legacy order:
- * text, tool calls, media.
+ * {@link TextPart}s, {@link #getToolCalls()} selects the complete {@link ToolCallPart}s
+ * (streamed argument deltas marked {@link StreamingParts#isPartial(MessagePart) partial}
+ * are not tool calls yet) and {@link #getMedia()} selects the {@link MediaPart}s, in part
+ * order. Messages built through the legacy constructor or builder setters get their parts
+ * in the legacy order: text, tool calls, media.
  *
  * @author Mark Pollack
  * @author Christian Tzolov
@@ -87,7 +89,11 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 		super(MessageType.ASSISTANT, joinText(parts), properties);
 		this.parts = List.copyOf(parts);
 		this.media = select(MediaPart.class).map(MediaPart::media).toList();
-		this.toolCalls = select(ToolCallPart.class).map(ToolCallPart::toolCall).toList();
+		// A streamed argument delta (partial part) is not a tool call yet: it must not
+		// trigger execution or make the chunk look like a tool-call response.
+		this.toolCalls = select(ToolCallPart.class).filter(part -> !StreamingParts.isPartial(part))
+			.map(ToolCallPart::toolCall)
+			.toList();
 		this.reasoning = select(ReasoningPart.class).toList();
 	}
 
@@ -152,10 +158,20 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 		return this.reasoning;
 	}
 
+	/**
+	 * The complete tool calls of this message, in part order. Partial
+	 * {@link ToolCallPart}s produced while streaming argument deltas are excluded, so a
+	 * streamed chunk only reports tool calls once they can be executed.
+	 * @return an unmodifiable list of tool calls
+	 */
 	public List<ToolCall> getToolCalls() {
 		return this.toolCalls;
 	}
 
+	/**
+	 * Whether this message holds at least one complete tool call.
+	 * @return {@code true} if {@link #getToolCalls()} is not empty
+	 */
 	public boolean hasToolCalls() {
 		return !this.toolCalls.isEmpty();
 	}

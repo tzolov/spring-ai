@@ -985,6 +985,11 @@ responseFlux.subscribe(chunk -> {
 
 The aggregated response produced by `ChatClient` or `MessageAggregator` contains the complete `ReasoningPart` followed by the complete `TextPart`.
 
+Tool-call argument deltas are streamed the same way, as partial `ToolCallPart`s carrying only that fragment of the JSON arguments.
+A partial `ToolCallPart` is not a tool call yet: `getToolCalls()` and `hasToolCalls()` ignore it, so nothing executes on it.
+The delta chunks are only visible on the raw `ChatModel.stream()`; `ChatClient` hides every chunk of a tool round, argument deltas included, because it executes the tools itself.
+The complete tool calls still arrive in one chunk once the arguments are done, exactly as before.
+
 [NOTE]
 ====
 The deprecated `reasoningContent` metadata key on a streamed chunk holds the reasoning accumulated so far, not the delta, so it must not be appended.

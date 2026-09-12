@@ -25,6 +25,9 @@ import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
 
+import org.springframework.ai.bedrock.converse.api.ConverseApiUtils;
+import org.springframework.ai.chat.messages.part.OpaquePayload;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
 import org.springframework.util.Assert;
 
 /**
@@ -44,7 +47,14 @@ import org.springframework.util.Assert;
  * @author Jewoo Shin
  * @author Soby Chacko
  * @see BedrockAssistantMessage
+ * @deprecated since 2.1.0, for removal; the reasoning is a {@link ReasoningPart} of the
+ * assistant message whose {@link OpaquePayload} carries the signature
+ * ({@link BedrockProxyChatModel#PAYLOAD_SIGNATURE}) or the redacted content
+ * ({@link BedrockProxyChatModel#PAYLOAD_REDACTED_CONTENT}) under the
+ * {@link BedrockProxyChatModel#BEDROCK_PROVIDER} provider. This class is now a view over
+ * such a part.
  */
+@Deprecated(since = "2.1.0", forRemoval = true)
 final class BedrockReasoningContent {
 
 	private final @Nullable String text;
@@ -82,6 +92,17 @@ final class BedrockReasoningContent {
 	}
 
 	/**
+	 * The view of a {@link ReasoningPart} that carries a Bedrock payload.
+	 * @param reasoningPart the reasoning part
+	 * @return the value object, or {@code null} when the part has no Bedrock payload
+	 * (plain or foreign reasoning is not Bedrock reasoning content)
+	 */
+	static @Nullable BedrockReasoningContent from(ReasoningPart reasoningPart) {
+		ContentBlock contentBlock = ConverseApiUtils.toReasoningContentBlock(reasoningPart);
+		return contentBlock != null ? from(contentBlock.reasoningContent()) : null;
+	}
+
+	/**
 	 * Convert this value object back into an AWS SDK {@link ContentBlock} carrying a
 	 * {@code reasoningContent} block. The reasoning text and signature are replayed
 	 * unmodified; signatures are never regenerated.
@@ -96,6 +117,15 @@ final class BedrockReasoningContent {
 			builder.reasoningText(ReasoningTextBlock.builder().text(this.text).signature(this.signature).build());
 		}
 		return ContentBlock.fromReasoningContent(builder.build());
+	}
+
+	/**
+	 * The {@link ReasoningPart} equivalent of this value object: a signed text part, or a
+	 * redacted part whose payload holds the Base64 encoded redacted content.
+	 * @return the reasoning part
+	 */
+	ReasoningPart toReasoningPart() {
+		return ConverseApiUtils.toReasoningPart(toContentBlock().reasoningContent());
 	}
 
 	public @Nullable String getText() {

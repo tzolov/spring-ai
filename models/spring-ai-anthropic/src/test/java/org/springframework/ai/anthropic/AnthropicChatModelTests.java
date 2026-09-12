@@ -548,6 +548,48 @@ class AnthropicChatModelTests {
 	}
 
 	@Test
+	void streamingToolUseEmitsArgumentDeltasAsPartialPartsBeforeTheCompleteCall() {
+		givenStream(List.of(messageStartEvent(), textStartEvent(0), textDeltaEvent("Checking.", 0),
+				contentBlockStopEvent(0), toolUseStartEvent("toolu_123", "getCurrentWeather"),
+				inputJsonDeltaEvent("{\"location\":"), inputJsonDeltaEvent("\"Paris\"}"), contentBlockStopEvent(1),
+				messageDeltaEvent(StopReason.TOOL_USE)));
+
+		AtomicReference<ChatResponse> aggregatedResponse = new AtomicReference<>();
+		List<ChatResponse> chunks = new MessageAggregator()
+			.aggregate(this.chatModel.stream(new Prompt("What's the weather?")), aggregatedResponse::set)
+			.collectList()
+			.block();
+
+		// text delta, tool-use start, two argument deltas, final message_delta chunk
+		assertThat(chunks).hasSize(5);
+		AssistantMessage.ToolCall started = new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather",
+				"");
+		assertThat(chunks.get(1).getResult().getOutput().getParts())
+			.containsExactly(StreamingParts.partial(ToolCallPart.of(started), 1));
+		assertThat(chunks.get(2).getResult().getOutput().getParts()).containsExactly(StreamingParts.partial(
+				ToolCallPart
+					.of(new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather", "{\"location\":")),
+				1));
+		assertThat(chunks.get(3).getResult().getOutput().getParts()).containsExactly(StreamingParts.partial(ToolCallPart
+			.of(new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather", "\"Paris\"}")), 1));
+		// Argument deltas are not tool calls yet: nothing executes on them
+		assertThat(chunks.get(1).hasToolCalls()).isFalse();
+		assertThat(chunks.get(2).hasToolCalls()).isFalse();
+		assertThat(chunks.get(3).hasToolCalls()).isFalse();
+		assertThat(chunks.get(1).getResult().getOutput().getText()).isNull();
+
+		// The final chunk still carries the complete tool call, as before
+		AssistantMessage.ToolCall complete = new AssistantMessage.ToolCall("toolu_123", "function", "getCurrentWeather",
+				"{\"location\":\"Paris\"}");
+		assertThat(chunks.get(4).hasToolCalls()).isTrue();
+		assertThat(chunks.get(4).getResult().getOutput().getToolCalls()).containsExactly(complete);
+
+		AssistantMessage aggregated = aggregatedResponse.get().getResult().getOutput();
+		assertThat(aggregated.getParts()).containsExactly(TextPart.of("Checking."), ToolCallPart.of(complete));
+		assertThat(aggregated.getToolCalls()).containsExactly(complete);
+	}
+
+	@Test
 	void streamingThinkingWithoutSignatureIsKeptAsText() {
 		givenStream(List.of(messageStartEvent(), thinkingStartEvent(), thinkingDeltaEvent("unsigned"),
 				contentBlockStopEvent(0), textStartEvent(1), textDeltaEvent("Answer.", 1), contentBlockStopEvent(1),

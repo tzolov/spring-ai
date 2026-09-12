@@ -404,8 +404,8 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 		}
 
 		// -- Event: content_block_start --
-		// Starts tool call tracking, emits redacted thinking as a complete part, and
-		// accumulates web search results.
+		// Starts tool call tracking (emitting the started call as a partial part), emits
+		// redacted thinking as a complete part, and accumulates web search results.
 		if (event.contentBlockStart().isPresent()) {
 			var startEvent = event.contentBlockStart().get();
 			var contentBlock = startEvent.contentBlock();
@@ -413,6 +413,9 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			if (contentBlock.toolUse().isPresent()) {
 				var toolUseBlock = contentBlock.asToolUse();
 				streamingState.startToolUse(index, toolUseBlock.id(), toolUseBlock.name());
+				ToolCallPart startedPart = streamingState.toolCallDelta(index, "");
+				return startedPart != null
+						? partChunk(streamingState, StreamingParts.partial(startedPart, index), Map.of()) : null;
 			}
 			else if (contentBlock.isRedactedThinking()) {
 				RedactedThinkingBlock redactedBlock = contentBlock.asRedactedThinking();
@@ -436,8 +439,9 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 		}
 
 		// -- Event: content_block_delta --
-		// Text, thinking and signature deltas are emitted as indexed partial parts; tool
-		// argument JSON is accumulated; citations go to the final response metadata.
+		// Text, thinking, signature and tool argument deltas are emitted as indexed
+		// partial parts (argument deltas are also accumulated for the complete call);
+		// citations go to the final response metadata.
 		if (event.contentBlockDelta().isPresent()) {
 			var deltaEvent = event.contentBlockDelta().get();
 			var delta = deltaEvent.delta();
@@ -449,8 +453,13 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			}
 
 			if (delta.inputJson().isPresent()) {
-				streamingState.appendToolJson(index, delta.asInputJson().partialJson());
-				return null;
+				String partialJson = delta.asInputJson().partialJson();
+				streamingState.appendToolJson(index, partialJson);
+				// A partial ToolCallPart is not a tool call yet (AssistantMessage skips
+				// it in getToolCalls()), so the chunk cannot trigger execution.
+				ToolCallPart deltaPart = streamingState.toolCallDelta(index, partialJson);
+				return deltaPart != null ? partChunk(streamingState, StreamingParts.partial(deltaPart, index), Map.of())
+						: null;
 			}
 
 			if (delta.isThinking()) {
@@ -1700,6 +1709,21 @@ public final class AnthropicChatModel implements ChatModel, StreamingChatModel {
 			if (toolUse != null) {
 				toolUse.arguments.append(partialJson);
 			}
+		}
+
+		/**
+		 * A partial tool call part for the tool use block at the given index carrying
+		 * only the given argument delta, or {@code null} if no tool use is tracked there.
+		 * @param index the content block index
+		 * @param argumentsDelta the argument JSON delta
+		 * @return the partial part, or {@code null}
+		 */
+		@Nullable ToolCallPart toolCallDelta(int index, String argumentsDelta) {
+			InFlightToolUse toolUse = this.inFlightToolUses.get(index);
+			if (toolUse == null || toolUse.id.isEmpty() || toolUse.name.isEmpty()) {
+				return null;
+			}
+			return ToolCallPart.of(new ToolCall(toolUse.id, "function", toolUse.name, argumentsDelta));
 		}
 
 		/**

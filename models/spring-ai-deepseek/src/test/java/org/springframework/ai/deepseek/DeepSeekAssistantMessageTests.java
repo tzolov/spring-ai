@@ -24,6 +24,9 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.ai.chat.messages.AssistantMessage.ToolCall;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
 
@@ -36,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * @author Sun Yuhan
  * @author guan xu
  */
+@SuppressWarnings("removal")
 class DeepSeekAssistantMessageTests {
 
 	@Test
@@ -203,6 +207,61 @@ class DeepSeekAssistantMessageTests {
 		assertThat(message.getMetadata()).containsAllEntriesOf(properties);
 		assertThat(message.getToolCalls()).isEqualTo(toolCalls);
 		assertThat(message.getMedia()).isEqualTo(media);
+	}
+
+	@Test
+	public void builderMaterializesReasoningAsAPartBeforeTheText() {
+		List<ToolCall> toolCalls = List.of(new ToolCall("1", "function", "myFunction", "{}"));
+		DeepSeekAssistantMessage message = DeepSeekAssistantMessage.builder()
+			.content("answer")
+			.reasoningContent("thoughts")
+			.toolCalls(toolCalls)
+			.prefix(true)
+			.build();
+
+		assertThat(message.getParts()).containsExactly(ReasoningPart.of("thoughts"), TextPart.of("answer"),
+				ToolCallPart.of(toolCalls.get(0)));
+		assertThat(message.getReasoning()).containsExactly(ReasoningPart.of("thoughts"));
+		assertThat(message.getMetadata()).containsEntry(DeepSeekChatModel.PREFIX_METADATA_KEY, true);
+	}
+
+	@Test
+	public void builderAcceptsExplicitParts() {
+		DeepSeekAssistantMessage message = DeepSeekAssistantMessage.builder()
+			.part(ReasoningPart.of("thoughts"))
+			.part(TextPart.of("answer"))
+			.build();
+
+		assertThat(message.getParts()).containsExactly(ReasoningPart.of("thoughts"), TextPart.of("answer"));
+		assertThat(message.getReasoningContent()).isEqualTo("thoughts");
+		assertThat(message.getText()).isEqualTo("answer");
+		assertThat(message.getPrefix()).isNull();
+	}
+
+	@Test
+	public void prefixIsReadFromTheMetadataKey() {
+		DeepSeekAssistantMessage message = DeepSeekAssistantMessage.builder()
+			.content("```python")
+			.properties(Map.of(DeepSeekChatModel.PREFIX_METADATA_KEY, true))
+			.build();
+
+		assertThat(message.getPrefix()).isTrue();
+
+		message.setPrefix(false);
+
+		assertThat(message.getPrefix()).isFalse();
+		assertThat(message.getMetadata()).containsEntry(DeepSeekChatModel.PREFIX_METADATA_KEY, false);
+	}
+
+	@Test
+	public void emptyReasoningContentDoesNotCreateAPart() {
+		DeepSeekAssistantMessage message = DeepSeekAssistantMessage.builder()
+			.content("answer")
+			.reasoningContent("")
+			.build();
+
+		assertThat(message.getParts()).containsExactly(TextPart.of("answer"));
+		assertThat(message.getReasoningContent()).isEmpty();
 	}
 
 	@Test

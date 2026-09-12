@@ -177,6 +177,48 @@ class MessageAggregatorTests {
 	}
 
 	@Test
+	void partialToolCallDeltasFollowedByTheCompletePartYieldOneToolCall() {
+		ToolCall complete = new ToolCall("call_1", "function", "getWeather", "{\"city\":\"Seoul\"}");
+		Flux<ChatResponse> responses = Flux.just(indexed("r1", StreamingParts.partial(TextPart.of("Checking"), 0)),
+				indexed("r1",
+						StreamingParts.partial(
+								ToolCallPart.of(new ToolCall("call_1", "function", "getWeather", "{\"city\":")), 1)),
+				indexed("r1",
+						StreamingParts.partial(
+								ToolCallPart.of(new ToolCall("call_1", "function", "getWeather", "\"Seoul\"}")), 1)),
+				indexed("r1", StreamingParts.complete(ToolCallPart.of(complete), 1)));
+
+		AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
+		List<ChatResponse> chunks = new MessageAggregator().aggregate(responses, aggregated::set).collectList().block();
+
+		// Delta chunks never look like a tool-call response; only the complete one does
+		assertThat(chunks.get(1).hasToolCalls()).isFalse();
+		assertThat(chunks.get(2).hasToolCalls()).isFalse();
+		assertThat(chunks.get(3).hasToolCalls()).isTrue();
+		assertThat(chunks.get(3).getResult().getOutput().getToolCalls()).containsExactly(complete);
+
+		AssistantMessage output = aggregated.get().getResult().getOutput();
+		assertThat(output.getParts()).containsExactly(TextPart.of("Checking"), ToolCallPart.of(complete));
+		assertThat(output.getToolCalls()).containsExactly(complete);
+	}
+
+	@Test
+	void partialToolCallDeltasWithoutACompletePartAreAssembledFromTheDeltas() {
+		Flux<ChatResponse> responses = Flux.just(
+				indexed("r1",
+						StreamingParts.partial(
+								ToolCallPart.of(new ToolCall("call_1", "function", "getWeather", "{\"city\":")), 0)),
+				indexed("r1", StreamingParts
+					.partial(ToolCallPart.of(new ToolCall("call_1", "function", "getWeather", "\"Seoul\"}")), 0)));
+
+		AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
+		new MessageAggregator().aggregate(responses, aggregated::set).blockLast();
+
+		assertThat(aggregated.get().getResult().getOutput().getToolCalls())
+			.containsExactly(new ToolCall("call_1", "function", "getWeather", "{\"city\":\"Seoul\"}"));
+	}
+
+	@Test
 	void legacyUnindexedChunksStillConcatenateTextAndAppendToolCalls() {
 		ToolCall toolCall = new ToolCall("toolu_1", "function", "getWeather", "{}");
 		ChatResponse finalChunk = new ChatResponse(

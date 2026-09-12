@@ -87,8 +87,11 @@ public class DeepSeekStreamFunctionCallingHelper {
 				: (previous != null ? previous.toolCallId() : null));
 
 		Boolean prefix = (current.prefix() != null ? current.prefix() : (previous != null ? previous.prefix() : null));
-		String reasoningContent = (current.reasoningContent() != null ? current.reasoningContent()
-				: (previous != null ? previous.reasoningContent() : null));
+		// Concatenate the reasoning fragments like the content, so reasoning streamed
+		// inside a buffered tool-call window survives the merge.
+		String reasoningContent = (previous != null && previous.reasoningContent() != null)
+				? previous.reasoningContent() + (current.reasoningContent() != null ? current.reasoningContent() : "")
+				: current.reasoningContent();
 
 		List<ToolCall> toolCalls = new ArrayList<>();
 		ToolCall lastPreviousTooCall = null;

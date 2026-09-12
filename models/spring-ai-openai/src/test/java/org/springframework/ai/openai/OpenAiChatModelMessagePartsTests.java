@@ -251,9 +251,19 @@ class OpenAiChatModelMessagePartsTests {
 			.collectList()
 			.block();
 
-		// reasoning deltas, text deltas, then one merged tool-call chunk
-		assertThat(responses).hasSize(5);
+		// reasoning deltas, text deltas, two argument-delta chunks, then the merged
+		// tool-call chunk
+		assertThat(responses).hasSize(7);
 		assertThat(responses).allSatisfy(r -> assertThat(r.getMetadata().getId()).isEqualTo("chatcmpl-123"));
+		assertThat(responses.get(4).getResult().getOutput().getParts()).containsExactly(StreamingParts.partial(
+				ToolCallPart.of(new AssistantMessage.ToolCall("call_1", "function", "getWeather", "{\"city\":")), 2));
+		assertThat(responses.get(5).getResult().getOutput().getParts()).containsExactly(StreamingParts.partial(
+				ToolCallPart.of(new AssistantMessage.ToolCall("call_1", "function", "getWeather", "\"Seoul\"}")), 2));
+		// Argument deltas are not tool calls yet
+		assertThat(responses.get(4).hasToolCalls()).isFalse();
+		assertThat(responses.get(5).hasToolCalls()).isFalse();
+		assertThat(responses.get(4).getResult().getOutput().getText()).isNull();
+		assertThat(responses.get(6).hasToolCalls()).isTrue();
 		MessagePart first = responses.get(0).getResult().getOutput().getParts().get(0);
 		assertThat(first).isEqualTo(StreamingParts.partial(ReasoningPart.of("Think "), 0));
 		assertThat(responses.get(0).getResult().getOutput().getText()).isNull();
@@ -262,7 +272,7 @@ class OpenAiChatModelMessagePartsTests {
 		MessagePart text = responses.get(2).getResult().getOutput().getParts().get(0);
 		assertThat(text).isEqualTo(StreamingParts.partial(TextPart.of("Let me "), 1));
 		assertThat(responses.get(2).getResult().getOutput().getText()).isEqualTo("Let me ");
-		List<MessagePart> lastParts = responses.get(4).getResult().getOutput().getParts();
+		List<MessagePart> lastParts = responses.get(6).getResult().getOutput().getParts();
 		MessagePart call = lastParts.get(lastParts.size() - 1);
 		assertThat(call).isInstanceOf(ToolCallPart.class);
 		assertThat(StreamingParts.partIndex(call)).isEqualTo(2);
@@ -278,6 +288,39 @@ class OpenAiChatModelMessagePartsTests {
 		assertThat(aggregated.getToolCalls()).hasSize(1);
 		assertThat(aggregated.getToolCalls().get(0).arguments()).isEqualTo("{\"city\":\"Seoul\"}");
 		assertThat(aggregated.getText()).isEqualTo("Let me check.");
+	}
+
+	@Test
+	void streamEndingInsideAToolCallStillEmitsTheMergedCall() {
+		// finish_reason "length" mid-arguments (or a server that never sends
+		// "tool_calls"): the buffered chunks must be flushed on completion
+		List<ChatCompletionChunk> chunks = List.of(
+				streamingChunk(delta -> delta.role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+					.toolCalls(List.of(ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+						.index(0L)
+						.id("call_1")
+						.function(ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder()
+							.name("getWeather")
+							.arguments("{\"city\":")
+							.build())
+						.build())), null),
+				streamingChunk(delta -> delta.toolCalls(List.of(ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+					.index(0L)
+					.function(ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder().arguments("\"Seo").build())
+					.build())), ChatCompletionChunk.Choice.FinishReason.LENGTH));
+
+		AtomicReference<ChatResponse> aggregatedRef = new AtomicReference<>();
+		List<ChatResponse> responses = new MessageAggregator().aggregate(streamResponses(chunks), aggregatedRef::set)
+			.collectList()
+			.block();
+
+		// two argument deltas, then the merged chunk flushed on completion
+		assertThat(responses).hasSize(3);
+		assertThat(responses.get(2).hasToolCalls()).isTrue();
+		assertThat(responses.get(2).getResult().getOutput().getToolCalls().get(0).arguments())
+			.isEqualTo("{\"city\":\"Seo");
+		assertThat(responses.get(2).getResult().getMetadata().getFinishReason()).isEqualTo("LENGTH");
+		assertThat(aggregatedRef.get().getResult().getOutput().getToolCalls()).hasSize(1);
 	}
 
 	@Test

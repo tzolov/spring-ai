@@ -469,7 +469,10 @@ System.out.println(message.getText());       // the TextParts joined
 === Streaming Example
 
 Thinking is fully supported in streaming mode.
-Every streamed chunk carries one part stamped with the content block index it belongs to (see `StreamingParts`): thinking deltas arrive as partial `ReasoningPart`s, the signature as a partial `ReasoningPart` carrying only the payload, and text deltas as partial `TextPart`s.
+Every streamed chunk carries one part stamped with the content block index it belongs to (see `StreamingParts`): thinking deltas arrive as partial `ReasoningPart`s, the signature as a partial `ReasoningPart` carrying only the payload, text deltas as partial `TextPart`s, and tool-use argument deltas as partial `ToolCallPart`s holding only that fragment of the JSON arguments.
+A partial `ToolCallPart` is not a tool call yet: `getToolCalls()` and `hasToolCalls()` ignore it, so nothing executes on it.
+The delta chunks are only visible on the raw `ChatModel.stream()`; `ChatClient` hides every chunk of a tool round, argument deltas included, because it executes the tools itself.
+The complete tool calls still arrive in the final chunk of the response, exactly as before.
 `MessageAggregator` (used by `ChatClient` and the advisors) rebuilds the ordered parts from these chunks.
 
 [source,java]

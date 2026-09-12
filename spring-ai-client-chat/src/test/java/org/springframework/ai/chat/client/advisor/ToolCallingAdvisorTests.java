@@ -19,6 +19,7 @@ package org.springframework.ai.chat.client.advisor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
 import io.micrometer.observation.ObservationRegistry;
@@ -44,11 +45,16 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.part.MessagePart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallLimitExceededException;
@@ -604,6 +610,56 @@ public class ToolCallingAdvisorTests {
 		assertThat(results).isNotNull().hasSize(1);
 		assertThat(callCount[0]).isEqualTo(2);
 		verify(this.toolCallingManager, times(1)).executeToolCalls(any(Prompt.class), any(ChatResponse.class));
+	}
+
+	@Test
+	void adviseStreamHidesPartialToolCallDeltaChunksOfAToolRound() {
+		ToolCallingAdvisor advisor = ToolCallingAdvisor.builder().toolCallingManager(this.toolCallingManager).build();
+
+		ChatClientRequest request = createMockRequest();
+		AssistantMessage.ToolCall toolCall = new AssistantMessage.ToolCall("tool-call-1", "function", "testTool",
+				"{\"a\":1}");
+		// Round 1 as a chat model streams it: an argument delta (a partial ToolCallPart,
+		// not a tool call yet) and then the complete call
+		ChatClientResponse deltaChunk = chunk("round-1", StreamingParts.partial(
+				ToolCallPart.of(new AssistantMessage.ToolCall("tool-call-1", "function", "testTool", "{\"a\"")), 0));
+		ChatClientResponse completeChunk = chunk("round-1", StreamingParts.complete(ToolCallPart.of(toolCall), 0));
+		ChatClientResponse finalChunk = chunk("round-2", TextPart.of("done"));
+
+		int[] callCount = { 0 };
+		TerminalStreamAdvisor terminalAdvisor = new TerminalStreamAdvisor((req, chain) -> {
+			callCount[0]++;
+			return callCount[0] == 1 ? Flux.just(deltaChunk, completeChunk) : Flux.just(finalChunk);
+		});
+		StreamAdvisorChain realChain = DefaultAroundAdvisorChain.builder(ObservationRegistry.NOOP)
+			.pushAll(List.<Advisor>of(advisor, terminalAdvisor))
+			.build();
+		List<Message> conversationHistory = List.of(new UserMessage("test"),
+				AssistantMessage.builder().content("").build(), ToolResponseMessage.builder().build());
+		when(this.toolCallingManager.executeToolCalls(any(Prompt.class), any(ChatResponse.class)))
+			.thenReturn(ToolExecutionResult.builder().conversationHistory(conversationHistory).build());
+
+		// An outer advisor (e.g. chat memory) aggregates what this advisor lets through
+		AtomicReference<ChatResponse> outerAggregate = new AtomicReference<>();
+		List<ChatResponse> results = new MessageAggregator()
+			.aggregate(advisor.adviseStream(request, realChain).map(ChatClientResponse::chatResponse),
+					outerAggregate::set)
+			.collectList()
+			.block();
+
+		assertThat(results).isNotNull().hasSize(1);
+		assertThat(results.get(0).getResult().getOutput().getText()).isEqualTo("done");
+		AssistantMessage persisted = outerAggregate.get().getResult().getOutput();
+		assertThat(persisted.getParts()).containsExactly(TextPart.of("done"));
+		assertThat(persisted.hasToolCalls()).isFalse();
+		verify(this.toolCallingManager, times(1)).executeToolCalls(any(Prompt.class), any(ChatResponse.class));
+	}
+
+	private static ChatClientResponse chunk(String responseId, MessagePart part) {
+		ChatResponse chatResponse = new ChatResponse(
+				List.of(new Generation(AssistantMessage.builder().part(part).build())),
+				ChatResponseMetadata.builder().id(responseId).build());
+		return ChatClientResponse.builder().chatResponse(chatResponse).context(Map.of()).build();
 	}
 
 	@Test

@@ -26,6 +26,7 @@ import org.springframework.ai.chat.messages.part.MediaPart;
 import org.springframework.ai.chat.messages.part.MessagePart;
 import org.springframework.ai.chat.messages.part.OpaquePayload;
 import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
 import org.springframework.ai.chat.messages.part.TextPart;
 import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.messages.part.UnknownPart;
@@ -113,6 +114,30 @@ class AssistantMessagePartsTests {
 		assertThat(message.hasToolCalls()).isTrue();
 		assertThat(message.getMedia()).containsExactly(IMAGE);
 		assertThat(message.getReasoning()).containsExactly(SIGNED_REASONING);
+	}
+
+	@Test
+	void partialToolCallPartsAreNotToolCallsYet() {
+		// A streamed argument delta must not trigger tool execution; only the complete
+		// part counts.
+		AssistantMessage message = AssistantMessage.builder()
+			.part(StreamingParts.partial(ToolCallPart.of(new ToolCall("call_1", "function", "getWeather", "{\"ci")), 1))
+			.part(StreamingParts.complete(ToolCallPart.of(TIME_CALL), 2))
+			.build();
+
+		assertThat(message.getToolCalls()).containsExactly(TIME_CALL);
+		assertThat(message.hasToolCalls()).isTrue();
+		assertThat(message.getParts()).hasSize(2);
+	}
+
+	@Test
+	void onlyPartialToolCallPartsMeansNoToolCalls() {
+		AssistantMessage message = AssistantMessage.builder()
+			.part(StreamingParts.partial(ToolCallPart.of(WEATHER_CALL), 0))
+			.build();
+
+		assertThat(message.hasToolCalls()).isFalse();
+		assertThat(message.getToolCalls()).isEmpty();
 	}
 
 	@Test

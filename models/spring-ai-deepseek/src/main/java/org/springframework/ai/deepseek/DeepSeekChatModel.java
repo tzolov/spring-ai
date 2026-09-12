@@ -17,10 +17,13 @@
 package org.springframework.ai.deepseek;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
@@ -33,6 +36,11 @@ import reactor.core.publisher.Flux;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.part.MessagePart;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.StreamingParts;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
@@ -55,6 +63,7 @@ import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage;
 import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage.ChatCompletionFunction;
 import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage.ToolCall;
 import org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionRequest;
+import org.springframework.ai.deepseek.api.DeepSeekStreamFunctionCallingHelper;
 import org.springframework.ai.deepseek.api.common.DeepSeekConstants;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.retry.RetryUtils;
@@ -64,6 +73,7 @@ import org.springframework.core.retry.RetryTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * {@link ChatModel} and {@link StreamingChatModel} implementation for {@literal DeepSeek}
@@ -81,6 +91,26 @@ public class DeepSeekChatModel implements ChatModel {
 	private static final ChatModelObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultChatModelObservationConvention();
 
 	private static final ToolCallingManager DEFAULT_TOOL_CALLING_MANAGER = ToolCallingManager.builder().build();
+
+	/**
+	 * Message metadata key marking an assistant message as a prefix-completion prefix
+	 * (see the DeepSeek chat prefix completion feature). A plain {@link AssistantMessage}
+	 * whose metadata holds {@code true} under this key is sent with {@code prefix: true}.
+	 * @since 2.1.0
+	 */
+	public static final String PREFIX_METADATA_KEY = "deepseek.prefix";
+
+	/**
+	 * Message metadata key carrying the reasoning content as a single string. Superseded
+	 * by {@link AssistantMessage#getReasoning()}; still written for one release and read
+	 * as a replay fallback, to be removed afterwards.
+	 */
+	private static final String REASONING_CONTENT = "reasoningContent";
+
+	/**
+	 * Merges the buffered chunks of a streamed tool call into the complete call.
+	 */
+	private final DeepSeekStreamFunctionCallingHelper chunkMerger = new DeepSeekStreamFunctionCallingHelper();
 
 	/**
 	 * The default options used for the chat completion requests.
@@ -173,9 +203,10 @@ public class DeepSeekChatModel implements ChatModel {
 							"id", chatCompletion.id() != null ? chatCompletion.id() : "",
 							"role", choice.message().role() != null ? choice.message().role().name() : "",
 							"index", choice.index(),
-							"finishReason", choice.finishReason() != null ? choice.finishReason().name() : "");
+							"finishReason", choice.finishReason() != null ? choice.finishReason().name() : "",
+							REASONING_CONTENT, reasoningContentOf(choice));
 					// @formatter:on
-					return buildGeneration(choice, metadata);
+					return buildGeneration(choice, metadata, null);
 				}).toList();
 
 				// Current usage
@@ -206,11 +237,17 @@ public class DeepSeekChatModel implements ChatModel {
 		return Flux.deferContextual(contextView -> {
 			ChatCompletionRequest request = createRequest(prompt, true);
 
-			Flux<DeepSeekApi.ChatCompletionChunk> completionChunks = this.deepSeekApi.chatCompletionStream(request);
+			// The raw chunks: the tool-call chunks are buffered and merged here (see
+			// below) so their argument deltas can be streamed out as partial parts.
+			Flux<DeepSeekApi.ChatCompletionChunk> completionChunks = this.deepSeekApi.chatCompletionStreamRaw(request);
 
 			// For chunked responses, only the first chunk contains the choice role.
 			// The rest of the chunks with same ID share the same role.
 			ConcurrentHashMap<String, String> roleMap = new ConcurrentHashMap<>();
+			// Cumulative reasoning per choice for the deprecated metadata key, and the
+			// part indexer per choice for the streaming contract.
+			ConcurrentHashMap<String, String> reasoningMap = new ConcurrentHashMap<>();
+			ConcurrentHashMap<String, StreamingPartIndexer> indexerMap = new ConcurrentHashMap<>();
 
 			final ChatModelObservationContext observationContext = ChatModelObservationContext.builder()
 				.prompt(prompt)
@@ -229,36 +266,41 @@ public class DeepSeekChatModel implements ChatModel {
 				observation.start();
 			}
 
-			Flux<ChatResponse> chatResponse = completionChunks.map(this::chunkToChatCompletion).map(chatCompletion2 -> {
-				try {
-					String id = chatCompletion2.id();
-
-					List<Generation> generations = chatCompletion2.choices().stream().map(choice -> {
-						if (choice.message().role() != null) {
-							roleMap.putIfAbsent(id, choice.message().role().name());
-						}
-
-						// @formatter:off
-								Map<String, Object> metadata = Map.of(
-										"id", chatCompletion2.id(),
-										"role", roleMap.getOrDefault(id, ""),
-										"finishReason", choice.finishReason() != null ? choice.finishReason().name() : ""
-								);
-  								// @formatter:on
-						return buildGeneration(choice, metadata);
-					}).toList();
-					DeepSeekApi.Usage usage = chatCompletion2.usage();
-					Usage currentUsage = (usage != null) ? getDefaultUsage(usage) : new EmptyUsage();
-					Usage cumulativeUsage = UsageCalculator.getCumulativeUsage(currentUsage, previousChatResponse);
-
-					return new ChatResponse(generations, from(chatCompletion2, cumulativeUsage));
+			// Buffer the chunks of a tool call so the complete call is emitted once
+			// (merged as DeepSeekApi.chatCompletionStream does), while each argument
+			// delta is streamed out right away as a partial ToolCallPart that is not a
+			// tool call yet.
+			AtomicBoolean isInsideTool = new AtomicBoolean(false);
+			List<DeepSeekApi.ChatCompletionChunk> toolCallBuffer = new ArrayList<>();
+			Supplier<Flux<ChatResponse>> flushToolCallBuffer = () -> {
+				DeepSeekApi.ChatCompletionChunk merged = null;
+				for (DeepSeekApi.ChatCompletionChunk buffered : toolCallBuffer) {
+					merged = this.chunkMerger.merge(merged, buffered);
 				}
-				catch (Exception e) {
-					logger.error("Error processing chat completion", e);
-					return new ChatResponse(List.of());
+				toolCallBuffer.clear();
+				isInsideTool.set(false);
+				return merged == null ? Flux.empty() : Flux.just(toChatResponse(chunkToChatCompletion(merged),
+						previousChatResponse, roleMap, reasoningMap, indexerMap));
+			};
+			Flux<ChatResponse> chatResponse = completionChunks.concatMap(chunk -> {
+				if (this.chunkMerger.isStreamingToolFunctionCall(chunk)) {
+					isInsideTool.set(true);
 				}
-
-			});
+				if (!isInsideTool.get()) {
+					return Flux.just(toChatResponse(chunkToChatCompletion(chunk), previousChatResponse, roleMap,
+							reasoningMap, indexerMap));
+				}
+				toolCallBuffer.add(chunk);
+				ChatResponse deltaResponse = toolCallDeltaResponse(chunk, roleMap, indexerMap);
+				Flux<ChatResponse> emitted = deltaResponse != null ? Flux.just(deltaResponse) : Flux.empty();
+				if (this.chunkMerger.isStreamingToolFunctionCallFinish(chunk)) {
+					emitted = emitted.concatWith(flushToolCallBuffer.get());
+				}
+				return emitted;
+			})
+				// A stream that ends inside a tool call (finish_reason "length", or a
+				// server that never sends "tool_calls") still yields the merged chunk.
+				.concatWith(Flux.defer(() -> toolCallBuffer.isEmpty() ? Flux.empty() : flushToolCallBuffer.get()));
 
 			// @formatter:off
 			Flux<ChatResponse> flux = chatResponse
@@ -272,29 +314,91 @@ public class DeepSeekChatModel implements ChatModel {
 		});
 	}
 
-	private Generation buildGeneration(Choice choice, Map<String, Object> metadata) {
-		List<AssistantMessage.ToolCall> toolCalls = choice.message().toolCalls() == null ? List.of()
-				: choice.message()
-					.toolCalls()
-					.stream()
-					.map(toolCall -> new AssistantMessage.ToolCall(toolCall.id(), "function",
-							toolCall.function().name(), toolCall.function().arguments()))
-					.toList();
-
+	/**
+	 * Build the generation for one choice as ordered {@link MessagePart}s: reasoning,
+	 * text and tool calls. When {@code indexer} is non-null the choice is a streaming
+	 * delta: reasoning and text become partial indexed parts and tool calls complete
+	 * ones. The message is still a {@link DeepSeekAssistantMessage} for one release so
+	 * existing casts keep working.
+	 */
+	@SuppressWarnings("removal")
+	private Generation buildGeneration(Choice choice, Map<String, Object> metadata,
+			@Nullable StreamingPartIndexer indexer) {
 		String finishReason = (choice.finishReason() != null ? choice.finishReason().name() : "");
 		var generationMetadataBuilder = ChatGenerationMetadata.builder().finishReason(finishReason);
 
+		List<MessagePart> parts = new ArrayList<>();
+		// hasLength, not hasText: streamed reasoning deltas are often a single
+		// whitespace or newline token that must be kept.
+		String reasoning = reasoningContentOf(choice);
+		if (StringUtils.hasLength(reasoning)) {
+			parts.add(ReasoningPart.of(reasoning));
+		}
+		// In a stream only a non-empty content delta yields a text part, so the "" some
+		// servers send next to every reasoning delta does not split the reasoning. A
+		// complete response keeps the text the server sent, as it always has.
 		String textContent = choice.message().content();
-		String reasoningContent = choice.message().reasoningContent();
+		if (textContent != null && (indexer == null || !textContent.isEmpty())) {
+			parts.add(TextPart.of(textContent));
+		}
+		if (choice.message().toolCalls() != null) {
+			for (ToolCall toolCall : choice.message().toolCalls()) {
+				parts.add(ToolCallPart.of(new AssistantMessage.ToolCall(toolCall.id(), "function",
+						toolCall.function().name(), toolCall.function().arguments())));
+			}
+		}
+		if (indexer != null) {
+			parts.replaceAll(indexer::stamp);
+		}
 
-		DeepSeekAssistantMessage.Builder builder = new DeepSeekAssistantMessage.Builder();
-		DeepSeekAssistantMessage assistantMessage = builder.content(textContent)
-			.reasoningContent(reasoningContent)
+		DeepSeekAssistantMessage assistantMessage = DeepSeekAssistantMessage.builder()
+			.parts(parts)
 			.properties(metadata)
-			.toolCalls(toolCalls)
 			.build();
-
 		return new Generation(assistantMessage, generationMetadataBuilder.build());
+	}
+
+	private static String reasoningContentOf(Choice choice) {
+		String reasoningContent = choice.message().reasoningContent();
+		return reasoningContent != null ? reasoningContent : "";
+	}
+
+	/**
+	 * The reasoning text to send back as {@code reasoning_content}: the joined text of
+	 * the {@link ReasoningPart}s without payload (signed reasoning from other providers
+	 * is skipped), falling back to the deprecated {@link DeepSeekAssistantMessage}
+	 * accessor and then to the {@link #REASONING_CONTENT} metadata key for messages that
+	 * have no reasoning part. Empty reasoning is never sent.
+	 */
+	@SuppressWarnings("removal")
+	private static @Nullable String replayableReasoning(AssistantMessage assistantMessage) {
+		String reasoning;
+		if (!assistantMessage.getReasoning().isEmpty()) {
+			StringBuilder joined = new StringBuilder();
+			for (ReasoningPart part : assistantMessage.getReasoning()) {
+				if (part.payload() == null && part.text() != null) {
+					joined.append(part.text());
+				}
+			}
+			reasoning = joined.toString();
+		}
+		else if (assistantMessage instanceof DeepSeekAssistantMessage deepSeekAssistantMessage
+				&& deepSeekAssistantMessage.getReasoningContent() != null) {
+			reasoning = deepSeekAssistantMessage.getReasoningContent();
+		}
+		else {
+			reasoning = assistantMessage.getMetadata().get(REASONING_CONTENT) instanceof String value ? value : null;
+		}
+		return StringUtils.hasLength(reasoning) ? reasoning : null;
+	}
+
+	@SuppressWarnings("removal")
+	private static boolean isPrefix(AssistantMessage assistantMessage) {
+		if (Boolean.TRUE.equals(assistantMessage.getMetadata().get(PREFIX_METADATA_KEY))) {
+			return true;
+		}
+		return assistantMessage instanceof DeepSeekAssistantMessage deepSeekAssistantMessage
+				&& Boolean.TRUE.equals(deepSeekAssistantMessage.getPrefix());
 	}
 
 	private ChatResponseMetadata from(DeepSeekApi.ChatCompletion result, Usage usage) {
@@ -315,6 +419,93 @@ public class DeepSeekChatModel implements ChatModel {
 			.usage(usage)
 			.model(chatResponseMetadata.getModel() != null ? chatResponseMetadata.getModel() : "");
 		return builder.build();
+	}
+
+	/**
+	 * Converts one streamed (possibly merged) chunk into a {@link ChatResponse}.
+	 */
+	private ChatResponse toChatResponse(DeepSeekApi.ChatCompletion chatCompletion,
+			@Nullable ChatResponse previousChatResponse, ConcurrentHashMap<String, String> roleMap,
+			ConcurrentHashMap<String, String> reasoningMap,
+			ConcurrentHashMap<String, StreamingPartIndexer> indexerMap) {
+		try {
+			String id = chatCompletion.id();
+
+			List<Generation> generations = chatCompletion.choices().stream().map(choice -> {
+				if (choice.message().role() != null) {
+					roleMap.putIfAbsent(id, choice.message().role().name());
+				}
+
+				String choiceKey = id + ":" + choice.index();
+				String accumulatedReasoning = reasoningMap.merge(choiceKey, reasoningContentOf(choice), String::concat);
+				StreamingPartIndexer indexer = indexerMap.computeIfAbsent(choiceKey, key -> new StreamingPartIndexer());
+
+				// @formatter:off
+				Map<String, Object> metadata = Map.of(
+						"id", chatCompletion.id(),
+						"role", roleMap.getOrDefault(id, ""),
+						"finishReason", choice.finishReason() != null ? choice.finishReason().name() : "",
+						REASONING_CONTENT, accumulatedReasoning
+				);
+				// @formatter:on
+				return buildGeneration(choice, metadata, indexer);
+			}).toList();
+			DeepSeekApi.Usage usage = chatCompletion.usage();
+			Usage currentUsage = (usage != null) ? getDefaultUsage(usage) : new EmptyUsage();
+			Usage cumulativeUsage = UsageCalculator.getCumulativeUsage(currentUsage, previousChatResponse);
+
+			return new ChatResponse(generations, from(chatCompletion, cumulativeUsage));
+		}
+		catch (Exception e) {
+			logger.error("Error processing chat completion", e);
+			return new ChatResponse(List.of());
+		}
+	}
+
+	/**
+	 * The partial {@link ToolCallPart}s for the tool-call deltas of one raw streamed
+	 * chunk, or {@code null} when the chunk carries none (or only deltas whose call has
+	 * not been identified by id and name yet). Such a chunk has no text and, because
+	 * partial parts are not tool calls, {@code hasToolCalls()} is false on it.
+	 */
+	private static @Nullable ChatResponse toolCallDeltaResponse(DeepSeekApi.ChatCompletionChunk chunk,
+			ConcurrentHashMap<String, String> roleMap, ConcurrentHashMap<String, StreamingPartIndexer> indexerMap) {
+		String id = chunk.id() != null ? chunk.id() : "";
+		List<Generation> generations = new ArrayList<>();
+		if (chunk.choices() == null) {
+			return null;
+		}
+		for (DeepSeekApi.ChatCompletionChunk.ChunkChoice choice : chunk.choices()) {
+			List<ToolCall> deltas = choice.delta() != null && choice.delta().toolCalls() != null
+					? choice.delta().toolCalls() : List.of();
+			if (deltas.isEmpty()) {
+				continue;
+			}
+			StreamingPartIndexer indexer = indexerMap.computeIfAbsent(id + ":" + choice.index(),
+					key -> new StreamingPartIndexer());
+			AssistantMessage.Builder<?> messageBuilder = AssistantMessage.builder()
+				.properties(Map.of("id", id, "role", roleMap.getOrDefault(id, ""), "index", choice.index()));
+			boolean hasPart = false;
+			for (int i = 0; i < deltas.size(); i++) {
+				ToolCall delta = deltas.get(i);
+				ChatCompletionFunction function = delta.function();
+				String arguments = function != null && function.arguments() != null ? function.arguments() : "";
+				long deltaIndex = delta.index() != null ? delta.index() : i;
+				MessagePart part = indexer.toolCallDelta(deltaIndex, delta.id(),
+						function != null ? function.name() : null, arguments);
+				if (part != null) {
+					messageBuilder.part(part);
+					hasPart = true;
+				}
+			}
+			if (hasPart) {
+				generations.add(new Generation(messageBuilder.build()));
+			}
+		}
+		if (generations.isEmpty()) {
+			return null;
+		}
+		return new ChatResponse(generations, ChatResponseMetadata.builder().id(id).model(chunk.model()).build());
 	}
 
 	/**
@@ -357,18 +548,13 @@ public class DeepSeekChatModel implements ChatModel {
 						return new ToolCall(toolCall.id(), toolCall.type(), function);
 					}).toList();
 				}
-				Boolean isPrefixAssistantMessage = null;
-				String reasoningContent = null;
-				if (message instanceof DeepSeekAssistantMessage deepSeekAssistantMessage) {
-					reasoningContent = deepSeekAssistantMessage.getReasoningContent();
-					if (Boolean.TRUE.equals(deepSeekAssistantMessage.getPrefix())) {
-						isPrefixAssistantMessage = true;
-					}
-				}
-				String text = assistantMessage.getText();
-				Assert.state(text != null, "text must not be null");
-				return List.of(new ChatCompletionMessage(text, ChatCompletionMessage.Role.ASSISTANT, null, null,
-						toolCalls, isPrefixAssistantMessage, reasoningContent));
+				Boolean isPrefixAssistantMessage = isPrefix(assistantMessage) ? Boolean.TRUE : null;
+				String reasoningContent = replayableReasoning(assistantMessage);
+				// The text is null for tool-call turns without content, which the API
+				// accepts; histories from other providers produce such messages.
+				return List
+					.of(new ChatCompletionMessage(assistantMessage.getText(), ChatCompletionMessage.Role.ASSISTANT,
+							null, null, toolCalls, isPrefixAssistantMessage, reasoningContent));
 			}
 			else if (message.getMessageType() == MessageType.TOOL) {
 				ToolResponseMessage toolMessage = (ToolResponseMessage) message;
@@ -526,6 +712,67 @@ public class DeepSeekChatModel implements ChatModel {
 		else {
 			return prompt;
 		}
+	}
+
+	/**
+	 * Assigns stream part indices per choice: consecutive deltas of the same kind
+	 * (reasoning or text) share an index as partial parts; a tool call keeps one index
+	 * from its first argument delta to the complete part, keyed by tool call id; every
+	 * other part is complete and gets its own index.
+	 */
+	private static final class StreamingPartIndexer {
+
+		private int index = -1;
+
+		private @Nullable Class<? extends MessagePart> lastDeltaKind;
+
+		private final Map<String, Integer> toolCallIndexById = new HashMap<>();
+
+		// id and name of the tool call streamed at each delta index
+		private final Map<Long, AssistantMessage.ToolCall> startedToolCalls = new HashMap<>();
+
+		MessagePart stamp(MessagePart part) {
+			if (part instanceof ToolCallPart toolCallPart) {
+				this.lastDeltaKind = null;
+				return StreamingParts.complete(part, toolCallIndex(toolCallPart.toolCall().id()));
+			}
+			boolean delta = part instanceof TextPart || part instanceof ReasoningPart;
+			if (!delta || part.getClass() != this.lastDeltaKind) {
+				this.index++;
+			}
+			this.lastDeltaKind = delta ? part.getClass() : null;
+			return delta ? StreamingParts.partial(part, this.index) : StreamingParts.complete(part, this.index);
+		}
+
+		/**
+		 * A partial tool call part for one tool-call delta, or {@code null} while the
+		 * call at that delta index has not been identified by id and name yet.
+		 * Continuation deltas omit the id or send an empty one.
+		 */
+		@Nullable MessagePart toolCallDelta(long deltaIndex, @Nullable String id, @Nullable String name, String argumentsDelta) {
+			if (StringUtils.hasText(id) && StringUtils.hasText(name)) {
+				this.startedToolCalls.put(deltaIndex, new AssistantMessage.ToolCall(id, "function", name, ""));
+			}
+			AssistantMessage.ToolCall started = this.startedToolCalls.get(deltaIndex);
+			if (started == null) {
+				return null;
+			}
+			this.lastDeltaKind = null;
+			ToolCallPart part = ToolCallPart
+				.of(new AssistantMessage.ToolCall(started.id(), "function", started.name(), argumentsDelta));
+			return StreamingParts.partial(part, toolCallIndex(started.id()));
+		}
+
+		private int toolCallIndex(String id) {
+			Integer existing = this.toolCallIndexById.get(id);
+			if (existing != null) {
+				return existing;
+			}
+			this.index++;
+			this.toolCallIndexById.put(id, this.index);
+			return this.index;
+		}
+
 	}
 
 	public static final class Builder {
