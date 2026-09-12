@@ -16,22 +16,35 @@
 
 package org.springframework.ai.chat.messages;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 import org.jspecify.annotations.Nullable;
 
+import org.springframework.ai.chat.messages.part.MediaPart;
+import org.springframework.ai.chat.messages.part.MessagePart;
+import org.springframework.ai.chat.messages.part.ReasoningPart;
+import org.springframework.ai.chat.messages.part.TextPart;
+import org.springframework.ai.chat.messages.part.ToolCallPart;
 import org.springframework.ai.content.Media;
 import org.springframework.ai.content.MediaContent;
 import org.springframework.util.Assert;
-import org.springframework.util.CollectionUtils;
 
 /**
  * Lets the generative know the content was generated as a response to the user. This role
  * indicates messages that the generative has previously generated in the conversation. By
  * including assistant messages in the series, you provide context to the generative about
  * prior exchanges in the conversation.
+ * <p>
+ * The message content is an ordered list of {@link MessagePart}s. The text, tool calls
+ * and media accessors are views over that list: {@link #getText()} joins the
+ * {@link TextPart}s, {@link #getToolCalls()} selects the {@link ToolCallPart}s and
+ * {@link #getMedia()} selects the {@link MediaPart}s, in part order. Messages built
+ * through the legacy constructor or builder setters get their parts in the legacy order:
+ * text, tool calls, media.
  *
  * @author Mark Pollack
  * @author Christian Tzolov
@@ -41,8 +54,18 @@ import org.springframework.util.CollectionUtils;
  */
 public class AssistantMessage extends AbstractMessage implements MediaContent {
 
+	private final List<MessagePart> parts;
+
 	private final List<ToolCall> toolCalls;
 
+	private final List<ReasoningPart> reasoning;
+
+	/**
+	 * The media of this message, derived from its {@link MediaPart}s.
+	 * @deprecated since 2.1.0 in favor of {@link #getMedia()}; kept so existing
+	 * subclasses that read the field keep compiling. Will be removed in a future release.
+	 */
+	@Deprecated(since = "2.1.0", forRemoval = true)
 	protected final List<Media> media;
 
 	public AssistantMessage(@Nullable String content) {
@@ -51,11 +74,82 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 
 	protected AssistantMessage(@Nullable String content, Map<String, Object> properties, List<ToolCall> toolCalls,
 			List<Media> media) {
-		super(MessageType.ASSISTANT, content, properties);
+		this(legacyParts(content, toolCalls, media), properties);
+	}
+
+	/**
+	 * Creates a message from an ordered list of parts.
+	 * @param parts the parts, in order
+	 * @param properties the message metadata
+	 * @since 2.1.0
+	 */
+	protected AssistantMessage(List<MessagePart> parts, Map<String, Object> properties) {
+		super(MessageType.ASSISTANT, joinText(parts), properties);
+		this.parts = List.copyOf(parts);
+		this.media = select(MediaPart.class).map(MediaPart::media).toList();
+		this.toolCalls = select(ToolCallPart.class).map(ToolCallPart::toolCall).toList();
+		this.reasoning = select(ReasoningPart.class).toList();
+	}
+
+	private static List<MessagePart> legacyParts(@Nullable String content, List<ToolCall> toolCalls,
+			List<Media> media) {
 		Assert.notNull(toolCalls, "Tool calls must not be null");
 		Assert.notNull(media, "Media must not be null");
-		this.toolCalls = toolCalls;
-		this.media = media;
+		List<MessagePart> parts = new ArrayList<>();
+		if (content != null) {
+			parts.add(TextPart.of(content));
+		}
+		for (ToolCall toolCall : toolCalls) {
+			parts.add(ToolCallPart.of(toolCall));
+		}
+		for (Media medium : media) {
+			parts.add(MediaPart.of(medium));
+		}
+		return parts;
+	}
+
+	/**
+	 * Joins the text parts without a separator, matching the historical concatenation of
+	 * provider text blocks. Returns {@code null} when there is no text part at all.
+	 */
+	private static @Nullable String joinText(List<MessagePart> parts) {
+		Assert.notNull(parts, "Parts must not be null");
+		String single = null;
+		StringBuilder sb = null;
+		for (MessagePart part : parts) {
+			if (part instanceof TextPart textPart) {
+				if (single == null && sb == null) {
+					// Common case: one text part, hand back its own string instance.
+					single = textPart.text();
+				}
+				else {
+					if (sb == null) {
+						sb = new StringBuilder(single);
+						single = null;
+					}
+					sb.append(textPart.text());
+				}
+			}
+		}
+		return (sb != null) ? sb.toString() : single;
+	}
+
+	/**
+	 * The ordered content parts of this message.
+	 * @return an unmodifiable list of parts
+	 * @since 2.1.0
+	 */
+	public List<MessagePart> getParts() {
+		return this.parts;
+	}
+
+	/**
+	 * The reasoning parts of this message, in order.
+	 * @return an unmodifiable list of reasoning parts
+	 * @since 2.1.0
+	 */
+	public List<ReasoningPart> getReasoning() {
+		return this.reasoning;
 	}
 
 	public List<ToolCall> getToolCalls() {
@@ -63,7 +157,7 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 	}
 
 	public boolean hasToolCalls() {
-		return !CollectionUtils.isEmpty(this.toolCalls);
+		return !this.toolCalls.isEmpty();
 	}
 
 	@Override
@@ -71,12 +165,16 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 		return this.media;
 	}
 
+	private <P extends MessagePart> Stream<P> select(Class<P> type) {
+		return this.parts.stream().filter(type::isInstance).map(type::cast);
+	}
+
 	public AssistantMessage copy() {
 		return mutate().build();
 	}
 
 	public Builder<?> mutate() {
-		return builder().content(getText()).properties(getMetadata()).toolCalls(getToolCalls()).media(getMedia());
+		return builder().parts(getParts()).properties(getMetadata());
 	}
 
 	@Override
@@ -90,17 +188,17 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 		if (!super.equals(o)) {
 			return false;
 		}
-		return Objects.equals(this.toolCalls, that.toolCalls) && Objects.equals(this.media, that.media);
+		return Objects.equals(this.parts, that.parts);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(super.hashCode(), this.toolCalls, this.media);
+		return Objects.hash(super.hashCode(), this.parts);
 	}
 
 	@Override
 	public String toString() {
-		return "AssistantMessage [messageType=" + this.messageType + ", toolCalls=" + this.toolCalls + ", textContent="
+		return "AssistantMessage [messageType=" + this.messageType + ", parts=" + this.parts + ", textContent="
 				+ this.textContent + ", metadata=" + this.metadata + "]";
 	}
 
@@ -112,7 +210,21 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 
 	}
 
+	/**
+	 * Builder for {@link AssistantMessage}.
+	 * <p>
+	 * Parts added through {@link #part(MessagePart)}, {@link #parts(List)} and
+	 * {@link #reasoning(ReasoningPart)} come first, in the order they were added. The
+	 * legacy setters ({@link #content(String)}, {@link #toolCalls(List)},
+	 * {@link #media(List)}) are stored and materialized after them at {@link #build()}
+	 * time in the legacy order (text, tool calls, media), so the setter call order does
+	 * not affect the result.
+	 *
+	 * @param <B> the concrete builder type, for subclass builders
+	 */
 	public static class Builder<B extends Builder<B>> {
+
+		protected final List<MessagePart> explicitParts = new ArrayList<>();
 
 		protected @Nullable String content;
 
@@ -128,6 +240,73 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 		@SuppressWarnings("unchecked")
 		protected B self() {
 			return (B) this;
+		}
+
+		/**
+		 * Appends a content part.
+		 * @param part the part
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public B part(MessagePart part) {
+			Assert.notNull(part, "Content part must not be null");
+			if (!supportsParts()) {
+				throw new UnsupportedOperationException(getClass().getName()
+						+ " overrides build() through the legacy constructor and would drop explicit parts;"
+						+ " override supportsParts() to return true and build from buildParts()");
+			}
+			this.explicitParts.add(part);
+			return self();
+		}
+
+		/**
+		 * Whether {@link #build()} of this builder honors {@link #part(MessagePart)},
+		 * {@link #parts(List)} and {@link #reasoning(ReasoningPart)}. The base builder
+		 * does. A subclass builder that overrides {@link #build()} must override this
+		 * method to return {@code true} and construct its message from
+		 * {@link #buildParts()}; otherwise {@link #part(MessagePart)} throws so parts are
+		 * never dropped silently.
+		 * @return whether explicit parts are supported
+		 * @since 2.1.0
+		 */
+		protected boolean supportsParts() {
+			return getClass() == Builder.class;
+		}
+
+		/**
+		 * The parts this builder would put in the message: explicit parts first, then the
+		 * legacy text, tool calls and media in that order.
+		 * @return the parts, in message order
+		 * @since 2.1.0
+		 */
+		protected List<MessagePart> buildParts() {
+			List<MessagePart> allParts = new ArrayList<>(this.explicitParts);
+			allParts.addAll(legacyParts(this.content, this.toolCalls, this.media));
+			return allParts;
+		}
+
+		/**
+		 * Appends content parts in order.
+		 * @param parts the parts
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public B parts(List<MessagePart> parts) {
+			Assert.notNull(parts, "Content parts must not be null");
+			for (MessagePart part : parts) {
+				part(part);
+			}
+			return self();
+		}
+
+		/**
+		 * Appends a reasoning part.
+		 * @param reasoning the reasoning part
+		 * @return this builder
+		 * @since 2.1.0
+		 */
+		public B reasoning(ReasoningPart reasoning) {
+			return part(reasoning);
 		}
 
 		public B content(@Nullable String content) {
@@ -151,7 +330,7 @@ public class AssistantMessage extends AbstractMessage implements MediaContent {
 		}
 
 		public AssistantMessage build() {
-			return new AssistantMessage(this.content, this.properties, this.toolCalls, this.media);
+			return new AssistantMessage(buildParts(), this.properties);
 		}
 
 	}
