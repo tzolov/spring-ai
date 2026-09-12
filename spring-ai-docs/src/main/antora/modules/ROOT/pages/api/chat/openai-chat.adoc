@@ -884,7 +884,9 @@ This design provides maximum flexibility for working with diverse OpenAI-compati
 Some OpenAI-compatible servers that support reasoning models (such as DeepSeek R1, vLLM with reasoning parsers) expose the model's internal chain of thought via a `reasoning_content` field in their API responses.
 This field contains the step-by-step reasoning process the model used to arrive at its final answer.
 
-Spring AI maps this field from the JSON response to the `reasoningContent` key in the AssistantMessage metadata.
+Spring AI maps this field to a `ReasoningPart` in the `AssistantMessage` parts, available through `getReasoning()`.
+The same text is also written to the `reasoningContent` key in the `AssistantMessage` metadata.
+That metadata key is deprecated and will be removed in a future release; new code should read the parts.
 
 [IMPORTANT]
 ====
@@ -897,12 +899,12 @@ Official OpenAI reasoning models hide the chain-of-thought content when using th
 They only expose `reasoning_tokens` count in usage statistics.
 To access actual reasoning text from official OpenAI models, you must use OpenAI's Responses API (a separate endpoint not currently supported by this client).
 
-**Fallback behavior:** When `reasoning_content` is not provided by the server (e.g., official OpenAI Chat Completions), the `reasoningContent` metadata field will be an empty string.
+**Fallback behavior:** When `reasoning_content` is not provided by the server (e.g., official OpenAI Chat Completions), `getReasoning()` is empty and the deprecated `reasoningContent` metadata field is an empty string.
 ====
 
 ==== Accessing Reasoning Content
 
-When using a compatible server, you can access the reasoning content from the response metadata.
+When using a compatible server, you can access the reasoning content from the message parts.
 
 **Using ChatModel directly:**
 
@@ -916,17 +918,18 @@ ChatResponse response = chatModel.call(
 // Get the assistant message
 AssistantMessage message = response.getResult().getOutput();
 
-// Access the reasoning content from metadata
-String reasoning = message.getMetadata().get("reasoningContent");
-if (reasoning != null && !reasoning.isEmpty()) {
+// Access the reasoning content from the parts
+for (ReasoningPart reasoning : message.getReasoning()) {
     System.out.println("Model's reasoning process:");
-    System.out.println(reasoning);
+    System.out.println(reasoning.text());
 }
 
-// The final answer is in the regular content
+// The final answer is in the regular text
 System.out.println("\nFinal answer:");
-System.out.println(message.getContent());
+System.out.println(message.getText());
 ----
+
+The parts are ordered as the server returned them: reasoning first, then the answer text, then any tool calls.
 
 **Using ChatClient:**
 
@@ -940,7 +943,7 @@ String result = chatClient.prompt()
     .chatResponse()
     .getResult()
     .getOutput()
-    .getContent();
+    .getText();
 
 // To access reasoning content with ChatClient, retrieve the full response
 ChatResponse response = chatClient.prompt()
@@ -949,12 +952,12 @@ ChatResponse response = chatClient.prompt()
     .chatResponse();
 
 AssistantMessage message = response.getResult().getOutput();
-String reasoning = message.getMetadata().get("reasoningContent");
+List<ReasoningPart> reasoning = message.getReasoning();
 ----
 
 ==== Streaming Reasoning Content
 
-When using streaming responses, reasoning content is accumulated across chunks just like regular message content:
+When streaming, each chunk carries its reasoning delta as a partial `ReasoningPart` and its text delta as a partial `TextPart`, so you can append them as they arrive:
 
 [source,java]
 ----
@@ -968,18 +971,25 @@ StringBuilder answer = new StringBuilder();
 responseFlux.subscribe(chunk -> {
     AssistantMessage message = chunk.getResult().getOutput();
 
-    // Accumulate reasoning if present
-    String reasoningChunk = message.getMetadata().get("reasoningContent");
-    if (reasoningChunk != null) {
-        reasoning.append(reasoningChunk);
+    // Accumulate the reasoning deltas
+    for (ReasoningPart part : message.getReasoning()) {
+        reasoning.append(part.text());
     }
 
     // Accumulate the final answer
-    if (message.getContent() != null) {
-        answer.append(message.getContent());
+    if (message.getText() != null) {
+        answer.append(message.getText());
     }
 });
 ----
+
+The aggregated response produced by `ChatClient` or `MessageAggregator` contains the complete `ReasoningPart` followed by the complete `TextPart`.
+
+[NOTE]
+====
+The deprecated `reasoningContent` metadata key on a streamed chunk holds the reasoning accumulated so far, not the delta, so it must not be appended.
+It is kept for one release so that last-wins metadata aggregation still yields the full text.
+====
 
 ==== Example: DeepSeek R1
 
@@ -1045,6 +1055,10 @@ Without these provider-specific fields present in the follow-up request, some mo
 
 Spring AI automatically captures any extra fields present on tool-call objects in the provider response and replays them verbatim when the assistant message is included in a subsequent request.
 No configuration is required — the behavior is transparent for both blocking and streaming flows.
+
+The extra fields are stored as a JSON string in the `openai.additional_properties` attribute of the corresponding `ToolCallPart` (see `OpenAiChatModel.TOOL_CALL_ADDITIONAL_PROPERTIES_ATTRIBUTE`), so they survive serialization of the message parts.
+For one release they are also written to the `openai.tool_calls.additional_properties` message metadata key, a map from tool call id to the same JSON string.
+That key is deprecated; on replay the part attribute is used first and the metadata map is only consulted for histories persisted before the parts model.
 
 [NOTE]
 ====
