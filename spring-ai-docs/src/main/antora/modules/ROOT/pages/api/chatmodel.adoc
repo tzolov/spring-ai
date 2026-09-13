@@ -214,7 +214,7 @@ public class Generation implements ModelResult<AssistantMessage> {
 [[message-parts]]
 === Message Parts
 
-The content of an `AssistantMessage` and of a `UserMessage` is an ordered list of `MessagePart` entries, available through `getParts()`.
+The content of an `AssistantMessage`, a `UserMessage` and a `ToolResponseMessage` is an ordered list of `MessagePart` entries, available through `getParts()`.
 A part is one of the following types, all in the `org.springframework.ai.chat.messages.part` package:
 
 [cols="2,5"]
@@ -231,6 +231,8 @@ A part is one of the following types, all in the `org.springframework.ai.chat.me
 
 The familiar accessors are views over the parts, in part order: `getText()` joins the `TextPart` entries, `getMedia()` selects the `MediaPart` entries, and on `AssistantMessage` `getToolCalls()` selects the complete `ToolCallPart` entries and `getReasoning()` the `ReasoningPart` entries.
 A message with parts but no text part has an empty text.
+A `ToolResponseMessage` holds one `ToolResultPart` per tool result, available through `getResults()`; `getResponses()` is the view that keeps only the text of each result, so a result carrying media or an error flag is only visible through the parts.
+In this release every tool still returns a string, so each result part holds one text part; the part model is what will let a tool return media once the `ToolCallback` contract is extended.
 
 Messages built through the constructors or the `content(...)`, `text(...)`, `toolCalls(...)` and `media(...)` builder methods get their parts in the legacy order, text first, then tool calls, then media, so existing code keeps working unchanged.
 To control the order, add the parts directly:

@@ -90,6 +90,19 @@ class MessagePartJsonTests {
 	}
 
 	@Test
+	void toolResultPartWithoutIdNameOrContentRoundTrips() {
+		// What a null tool response (Ollama call without id, tool without text) becomes
+		ToolResultPart part = new ToolResultPart(null, null, List.of(), false, null, Map.of());
+
+		String json = this.mapper.writeValueAsString(part);
+		MessagePart back = this.mapper.readValue(json, MessagePart.class);
+
+		assertThat(back).isEqualTo(part);
+		assertThat(((ToolResultPart) back).id()).isNull();
+		assertThat(((ToolResultPart) back).toToolResponse().responseData()).isNull();
+	}
+
+	@Test
 	void toolResultPartRoundTripsWithNestedContent() {
 		ToolResultPart part = new ToolResultPart("call_7", "getWeather",
 				List.of(TextPart.of("{\"tempC\":18}"), ReasoningPart.of("nested")), true, null, Map.of());

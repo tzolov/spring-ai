@@ -6,10 +6,10 @@
 
 === Message Parts
 
-==== New: Ordered `MessagePart` Content on `AssistantMessage` and `UserMessage`
+==== New: Ordered `MessagePart` Content on `AssistantMessage`, `UserMessage` and `ToolResponseMessage`
 
-`AssistantMessage` and `UserMessage` now hold their content as an ordered list of `MessagePart` entries (`TextPart`, `ReasoningPart`, `ToolCallPart`, `ToolResultPart`, `MediaPart`, `UnknownPart`), available through `getParts()`.
-`getText()`, `getMedia()`, `getToolCalls()` and the new `getReasoning()` are views over the parts.
+`AssistantMessage`, `UserMessage` and `ToolResponseMessage` now hold their content as an ordered list of `MessagePart` entries (`TextPart`, `ReasoningPart`, `ToolCallPart`, `ToolResultPart`, `MediaPart`, `UnknownPart`), available through `getParts()`.
+`getText()`, `getMedia()`, `getToolCalls()`, `getResponses()` and the new `getReasoning()` and `getResults()` are views over the parts.
 Reasoning from Anthropic, Google GenAI, Bedrock Converse, OpenAI-compatible servers, DeepSeek and Ollama arrives as `ReasoningPart` entries, and the signatures the providers require on replay travel in the part payloads, so multi-turn tool calling with thinking enabled works out of the box.
 See xref:api/chatmodel.adoc#message-parts[Message Parts].
 
@@ -17,7 +17,11 @@ See xref:api/chatmodel.adoc#message-parts[Message Parts].
 
 The constructors and the existing builder methods keep working and produce the parts in the order text, tool calls, media, so no code change is required.
 
-* `getMedia()` and `getToolCalls()` return unmodifiable lists; add media and tool calls through the builder instead of mutating the returned list.
+* `getMedia()`, `getToolCalls()` and `getResponses()` return unmodifiable lists; add media, tool calls and responses through the builder instead of mutating the returned list.
+* A tool response without text, which the tool execution allows, becomes a `ToolResultPart` without content and converts back to the same response.
+* This prepares tool results that carry more than text: a `ToolResultPart` can hold media and an error flag, and the message, the aggregator and the persistence formats carry them.
+Tools still return a string in this release.
+A `ToolCallback` extension that lets a tool return media, together with the adapter mapping for Anthropic, Bedrock Converse and Google GenAI, is planned for a following release as an additive change.
 * `equals()` and `hashCode()` of both message types compare the parts, so media now takes part in equality; `Media` gained value equality over id, MIME type and data (the name is excluded because it defaults to a random value).
 * A message with parts but no text part has an empty text; `getText()` is `null` only for a message without any part.
 * Anthropic, Google GenAI and Bedrock Converse return one `Generation` per response instead of one per content block when thinking is enabled, so `getResult()` now holds the answer text and the tool calls together and `ChatClient` no longer returns the reasoning as the first result.
@@ -29,7 +33,7 @@ The following are still written or accepted for one release and will be removed 
 * The `reasoningContent` (OpenAI, DeepSeek), `thinking` (Ollama), `thoughtSignatures` (Google GenAI) and `openai.tool_calls.additional_properties` (OpenAI) message metadata keys, superseded by `getReasoning()` and the `ToolCallPart` attributes.
 * The Anthropic `thinking`, `signature` and `data` metadata keys on streamed chunks, superseded by the `ReasoningPart` payload.
 * `DeepSeekAssistantMessage`, `BedrockAssistantMessage` and `BedrockReasoningContent`; the chat models still return them, with their accessors derived from the parts, and accept plain `AssistantMessage` instances in the history.
-* The protected `media` field of `AssistantMessage` and `UserMessage`, kept for subclasses that read it.
+* The protected `media` field of `AssistantMessage` and `UserMessage` and the protected `responses` field of `ToolResponseMessage`, kept for subclasses that read them.
 
 ==== New: Streaming Contract for Parts
 

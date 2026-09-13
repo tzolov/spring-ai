@@ -28,8 +28,9 @@ import org.springframework.util.Assert;
  * The result of one tool call. The nested {@code content} lets a result carry media,
  * which a plain string cannot.
  *
- * @param id the id of the tool call this result answers
- * @param name the tool name
+ * @param id the id of the tool call this result answers, or {@code null} when the
+ * provider returned no id (Ollama can)
+ * @param name the tool name, or {@code null} when unknown
  * @param content the result content, copied and unmodifiable
  * @param isError whether the tool reported an error
  * @param payload provider data to replay with this part, or {@code null}
@@ -37,12 +38,10 @@ import org.springframework.util.Assert;
  * @author Christian Tzolov
  * @since 2.1.0
  */
-public record ToolResultPart(String id, String name, List<MessagePart> content, boolean isError,
+public record ToolResultPart(@Nullable String id, @Nullable String name, List<MessagePart> content, boolean isError,
 		@Nullable OpaquePayload payload, Map<String, String> attributes) implements MessagePart {
 
 	public ToolResultPart {
-		Assert.notNull(id, "id must not be null");
-		Assert.notNull(name, "name must not be null");
 		Assert.notNull(content, "content must not be null");
 		Assert.notNull(attributes, "attributes must not be null");
 		content = List.copyOf(content);
@@ -55,30 +54,40 @@ public record ToolResultPart(String id, String name, List<MessagePart> content, 
 	}
 
 	/**
-	 * Wraps a legacy {@link ToolResponse} as a result part with a single text part.
+	 * Wraps a legacy {@link ToolResponse} as a result part with a single text part. A
+	 * response without text (a {@code null} response data, which the tool execution
+	 * allows) becomes a part without content, so it converts back to the same response.
 	 * @param response the tool response
 	 * @return the part
 	 */
+	// ToolResponse leaves its components unannotated but carries null values in practice
+	@SuppressWarnings("NullAway")
 	public static ToolResultPart of(ToolResponse response) {
 		Assert.notNull(response, "response must not be null");
-		return new ToolResultPart(response.id(), response.name(), List.of(TextPart.of(response.responseData())), false,
-				null, Map.of());
+		List<MessagePart> content = response.responseData() != null ? List.of(TextPart.of(response.responseData()))
+				: List.of();
+		return new ToolResultPart(response.id(), response.name(), content, false, null, Map.of());
 	}
 
 	/**
 	 * Converts this part back to a legacy {@link ToolResponse} by joining its text
 	 * content. Non-text content is dropped, since a {@link ToolResponse} can only carry a
-	 * string.
+	 * string, and a part without any text content yields a {@code null} response data.
 	 * @return the tool response
 	 */
+	// ToolResponse leaves id and name unannotated but carries null values in practice
+	@SuppressWarnings("NullAway")
 	public ToolResponse toToolResponse() {
-		StringBuilder sb = new StringBuilder();
+		StringBuilder sb = null;
 		for (MessagePart part : this.content) {
 			if (part instanceof TextPart textPart) {
+				if (sb == null) {
+					sb = new StringBuilder();
+				}
 				sb.append(textPart.text());
 			}
 		}
-		return new ToolResponse(this.id, this.name, sb.toString());
+		return new ToolResponse(this.id, this.name, sb != null ? sb.toString() : null);
 	}
 
 }
