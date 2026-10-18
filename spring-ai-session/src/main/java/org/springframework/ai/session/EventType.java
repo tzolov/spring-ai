@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import org.springframework.ai.session.status.SessionStatusEvents;
+import org.springframework.ai.session.status.StopReason;
+import org.springframework.ai.session.status.TurnStatus;
 import org.springframework.util.Assert;
 
 /**
@@ -54,6 +57,20 @@ public final class EventType {
 	 * {@link org.springframework.ai.session.compaction.CompactionBoundary}.
 	 */
 	public static final EventType COMPACTION = of("COMPACTION");
+
+	/**
+	 * A turn status transition: a turn started on the session, or ended with a
+	 * {@link StopReason}. The newest one is the session's {@link TurnStatus}.
+	 * {@link SessionStatusEvents} builds and reads these events.
+	 */
+	public static final EventType STATUS = of("STATUS");
+
+	/**
+	 * A request to stop the turn that runs on the session, recorded by
+	 * {@link SessionService#interrupt}. When a turn runs, a {@link #STATUS} event in the
+	 * same append ends it.
+	 */
+	public static final EventType INTERRUPT = of("INTERRUPT");
 
 	private static final Set<EventType> MESSAGE_BEARING = Set.of(MESSAGE);
 
