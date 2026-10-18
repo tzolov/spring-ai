@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 import org.springframework.ai.session.status.SessionStatusEvents;
 import org.springframework.ai.session.status.StopReason;
+import org.springframework.ai.session.status.TurnService;
 import org.springframework.ai.session.status.TurnStatus;
 import org.springframework.util.Assert;
 
@@ -67,7 +68,7 @@ public final class EventType {
 
 	/**
 	 * A request to stop the turn that runs on the session, recorded by
-	 * {@link SessionService#interrupt}. When a turn runs, a {@link #STATUS} event in the
+	 * {@link TurnService#interrupt}. When a turn runs, a {@link #STATUS} event in the
 	 * same append ends it.
 	 */
 	public static final EventType INTERRUPT = of("INTERRUPT");
