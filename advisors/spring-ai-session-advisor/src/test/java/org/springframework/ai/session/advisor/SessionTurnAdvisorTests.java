@@ -44,6 +44,9 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallDecision;
+import org.springframework.ai.model.tool.ToolCallDecisions;
+import org.springframework.ai.model.tool.ToolCallLimitBehavior;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.session.CreateSessionRequest;
 import org.springframework.ai.session.DefaultSessionService;
@@ -57,16 +60,22 @@ import org.springframework.ai.session.compaction.CompactionRequest;
 import org.springframework.ai.session.compaction.CompactionResult;
 import org.springframework.ai.session.compaction.CompactionStrategy;
 import org.springframework.ai.session.compaction.WindowCompactionStrategy;
+import org.springframework.ai.session.question.Answer;
+import org.springframework.ai.session.question.Question;
+import org.springframework.ai.session.question.ToolConfirmationQuestion;
 import org.springframework.ai.session.status.SessionStatus;
 import org.springframework.ai.session.status.SessionStatusEvents;
 import org.springframework.ai.session.status.StopReason;
 import org.springframework.ai.session.status.TurnInProgressException;
 import org.springframework.ai.session.status.TurnStatus;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -653,6 +662,454 @@ class SessionTurnAdvisorTests {
 	}
 
 	// --- Tool calls that need confirmation ---
+
+	@Test
+	void pausedReplyParksTheTurnOnTheToolCalls() {
+		ChatClient client = looped(gated("bookFlight"), weather());
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon")));
+
+		ChatClientResponse response = client.prompt()
+			.user("Book a flight to Lisbon")
+			.advisors(SessionAdvisors.session(this.sessionId))
+			.call()
+			.chatClientResponse();
+
+		assertThat(ToolCallDecisions.awaitingDecision(response.chatResponse())).containsExactly("c1");
+		assertThat(this.ran).isEmpty();
+		TurnStatus status = this.sessionService.turns().status(this.sessionId);
+		assertThat(status.isParked()).isTrue();
+		assertThat(status.stopReason()).isEqualTo(StopReason.REQUIRES_ACTION);
+		// The question names the stored reply and lists its calls
+		SessionEvent reply = this.sessionService.getEvents(this.sessionId)
+			.stream()
+			.filter(SessionEvent::hasToolCalls)
+			.findFirst()
+			.orElseThrow();
+		SessionEvent asked = this.sessionService.turns().pendingQuestion(this.sessionId);
+		assertThat(asked).isNotNull();
+		assertThat(Question.from(asked).kind()).isEqualTo(Question.KIND_TOOL_CONFIRMATION);
+		assertThat(ToolConfirmationQuestion.from(asked)).isEqualTo(new ToolConfirmationQuestion(reply.getId(),
+				List.of(new ToolConfirmationQuestion.ToolCall("c1", "bookFlight", "{\"city\":\"Lisbon\"}", true))));
+		// Started and parked, no END_TURN
+		assertThat(statusEvents()).hasSize(2);
+	}
+
+	@Test
+	void streamedPausedReplyParksTheTurn() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon")));
+
+		List<ChatResponse> chunks = client.prompt()
+			.user("Book a flight to Lisbon")
+			.advisors(SessionAdvisors.session(this.sessionId))
+			.stream()
+			.chatResponse()
+			.collectList()
+			.block();
+
+		assertThat(chunks).isNotEmpty();
+		assertThat(ToolCallDecisions.awaitingDecision(chunks.get(chunks.size() - 1))).containsExactly("c1");
+		assertThat(this.sessionService.turns().status(this.sessionId).isParked()).isTrue();
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId)).isNotNull();
+	}
+
+	@Test
+	void decisionsResumeTheTurnAndRunTheAllowedCall() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Booked!");
+		say(client, "Book a flight to Lisbon");
+		String questionId = this.sessionService.turns().pendingQuestion(this.sessionId).getId();
+
+		String answer = client.prompt()
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.call()
+			.content();
+
+		assertThat(answer).isEqualTo("Booked!");
+		assertThat(this.ran).containsExactly("bookFlight");
+		assertThat(this.sessionService.turns().status(this.sessionId).stopReason()).isEqualTo(StopReason.END_TURN);
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId)).isNull();
+		Answer recorded = Answer.from(answerEvents().get(0));
+		assertThat(recorded.questionEventId()).isEqualTo(questionId);
+		assertThat(recorded.value()).isEqualTo(List.of(Map.of("key", "c1", "allowed", true)));
+		assertThat(ToolConfirmationQuestion.decisions(recorded).decisions())
+			.containsExactly(ToolCallDecision.allow("c1"));
+		// The model continued where it paused: the reply, then the result of the allowed
+		// call
+		assertThat(ScriptedChatModel.describe(this.model.prompts().get(1))).containsExactly("Book a flight to Lisbon",
+				"call:c1", "result:c1");
+		assertThat(toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId))))
+			.containsExactly("\"Booked Lisbon\"");
+		// Started, parked, resumed, ended
+		assertThat(statusEvents()).extracting(TurnStatus::from)
+			.extracting(TurnStatus::status)
+			.containsExactly(SessionStatus.RUNNING, SessionStatus.IDLE, SessionStatus.RUNNING, SessionStatus.IDLE);
+	}
+
+	@Test
+	void deniedCallAnswersTheModelWithTheMessage() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Understood.");
+		say(client, "Book a flight to Lisbon");
+
+		client.prompt()
+			.advisors(SessionAdvisors.decisions(this.sessionId,
+					ToolCallDecisions.of(ToolCallDecision.deny("c1", "Too expensive, ask again."))))
+			.call()
+			.content();
+
+		assertThat(this.ran).isEmpty();
+		assertThat(toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId))))
+			.containsExactly("Too expensive, ask again.");
+		assertThat(Answer.from(answerEvents().get(0)).value())
+			.isEqualTo(List.of(Map.of("key", "c1", "allowed", false, "message", "Too expensive, ask again.")));
+	}
+
+	@Test
+	void sameDecisionsTwiceAreRefusedAndRunNothing() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Booked!");
+		say(client, "Book a flight to Lisbon");
+		ToolCallDecisions decisions = ToolCallDecisions.of(ToolCallDecision.allow("c1"));
+		client.prompt().advisors(SessionAdvisors.decisions(this.sessionId, decisions)).call().content();
+
+		assertThatThrownBy(
+				() -> client.prompt().advisors(SessionAdvisors.decisions(this.sessionId, decisions)).call().content())
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("not parked");
+		assertThat(this.ran).hasSize(1);
+		assertThat(this.model.prompts()).hasSize(2);
+		assertThat(answerEvents()).hasSize(1);
+	}
+
+	@Test
+	void decisionsOnASessionThatNeverParkedAreRefused() {
+		assertThatThrownBy(() -> client().prompt()
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.call()
+			.content()).isInstanceOf(IllegalStateException.class).hasMessageContaining("not parked");
+		assertThat(this.model.prompts()).isEmpty();
+		assertThat(statusEvents()).isEmpty();
+	}
+
+	@Test
+	void decisionsWithNewTextAreRejected() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon")));
+		say(client, "Book a flight to Lisbon");
+
+		assertThatThrownBy(() -> client.prompt()
+			.user("And a hotel")
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.call()
+			.content()).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("no new user message");
+		assertThat(this.sessionService.turns().status(this.sessionId).isParked()).isTrue();
+		assertThat(this.ran).isEmpty();
+	}
+
+	@Test
+	void resumedTurnKeepsTheRunIdFromTheContext() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Booked!");
+		client.prompt()
+			.user("Book a flight to Lisbon")
+			.advisors(SessionAdvisors.session(this.sessionId, "run-1"))
+			.call()
+			.content();
+
+		client.prompt()
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.advisors(a -> a.param(SessionTurnAdvisor.RUN_ID_CONTEXT_KEY, "run-1"))
+			.call()
+			.content();
+
+		// One run, parked in the middle
+		assertThat(statusEvents()).hasSize(4)
+			.allSatisfy(event -> assertThat(SessionStatusEvents.runId(event)).isEqualTo("run-1"));
+	}
+
+	@Test
+	void newTextOnAParkedSessionResolvesThePauseFirst() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Sure, what else?");
+		say(client, "Book a flight to Lisbon");
+
+		assertThat(say(client, "Never mind.")).isEqualTo("Sure, what else?");
+
+		// The call was denied as abandoned, the log stays whole, and the new text ran
+		assertThat(this.ran).isEmpty();
+		assertThat(Answer.from(answerEvents().get(0)).value()).isEqualTo(
+				List.of(Map.of("key", "c1", "allowed", false, "message", SessionTurnAdvisor.ABANDONED_DENY_MESSAGE)));
+		assertThat(ScriptedChatModel.describe(this.model.prompts().get(1))).containsExactly("Book a flight to Lisbon",
+				"call:c1", "result:c1", "Never mind.");
+		assertThat(toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId))))
+			.containsExactly(SessionTurnAdvisor.ABANDONED_DENY_MESSAGE);
+		assertThat(this.sessionService.turns().status(this.sessionId).stopReason()).isEqualTo(StopReason.END_TURN);
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId)).isNull();
+	}
+
+	@Test
+	void parkedTurnDoesNotCompact() {
+		AtomicInteger triggered = new AtomicInteger();
+		ChatClient client = ChatClient.builder(this.model)
+			.defaultAdvisors(
+					SessionTurnAdvisor.builder(this.sessionService)
+						.compactionTrigger(request -> triggered.incrementAndGet() > 0)
+						.compactionStrategy(WindowCompactionStrategy.builder().lastEvents(2).build())
+						.build(),
+					ToolCallingAdvisor.builder().build(), SessionMemoryAdvisor.builder(this.sessionService).build())
+			.defaultToolCallbacks(gated("bookFlight"))
+			.build();
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Booked!");
+		say(client, "Book a flight to Lisbon");
+		assertThat(triggered).hasValue(0);
+
+		client.prompt()
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.call()
+			.content();
+
+		assertThat(triggered).hasValue(1);
+	}
+
+	@Test
+	void decisionsThatMissACallOrNameNoCallAreRejectedBeforeAnythingIsWritten() {
+		ChatClient client = looped(gated("bookFlight"), gated("bookHotel"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"), call("c2", "bookHotel", "Lisbon")));
+		say(client, "Book a trip to Lisbon");
+		SessionEvent asked = this.sessionService.turns().pendingQuestion(this.sessionId);
+
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> decide(client, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.withMessageContaining("undecided: [c2]");
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> decide(client,
+					ToolCallDecisions.of(ToolCallDecision.allow("c1"), ToolCallDecision.allow("c2"),
+							ToolCallDecision.deny("c3", "No such call"))))
+			.withMessageContaining("No tool call of the paused reply has the key 'c3'");
+
+		// The question is still open, nothing was answered and nothing ran
+		assertThat(this.sessionService.turns().status(this.sessionId).isParked()).isTrue();
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId).getId()).isEqualTo(asked.getId());
+		assertThat(answerEvents()).isEmpty();
+		assertThat(this.ran).isEmpty();
+		assertThat(this.model.prompts()).hasSize(1);
+	}
+
+	@Test
+	void allowedCallWhoseToolTheRequestDoesNotCarryIsRejected() {
+		ChatClient client = looped();
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Booked!");
+		client.prompt()
+			.user("Book a flight to Lisbon")
+			.toolCallbacks(gated("bookFlight"))
+			.advisors(SessionAdvisors.session(this.sessionId))
+			.call()
+			.content();
+		assertThat(this.sessionService.turns().status(this.sessionId).isParked()).isTrue();
+
+		// The decisions call carries no tools: the allowed call could not run
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> decide(client, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.withMessageContaining("does not carry the tool 'bookFlight'");
+		assertThat(this.sessionService.turns().status(this.sessionId).isParked()).isTrue();
+		assertThat(this.ran).isEmpty();
+
+		// With the tool passed again it runs
+		String answer = client.prompt()
+			.toolCallbacks(gated("bookFlight"))
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.call()
+			.content();
+		assertThat(answer).isEqualTo("Booked!");
+		assertThat(this.ran).containsExactly("bookFlight");
+	}
+
+	@Test
+	void failedResumeAnswersTheCallsAndEndsTheTurnWithError() {
+		ToolCallback failing = FunctionToolCallback.builder("bookFlight", (City city) -> {
+			throw new IllegalStateException("The booking system is down");
+		})
+			.description("A tool about a city")
+			.inputType(City.class)
+			.toolMetadata(ToolMetadata.builder().requiresConfirmation(true).build())
+			.build();
+		ToolCallingManager throwing = ToolCallingManager.builder()
+			.toolExecutionExceptionProcessor(DefaultToolExecutionExceptionProcessor.builder().alwaysThrow(true).build())
+			.build();
+		ChatClient client = ChatClient.builder(this.model)
+			.defaultAdvisors(SessionTurnAdvisor.builder(this.sessionService).toolCallingManager(throwing).build(),
+					ToolCallingAdvisor.builder().build(), SessionMemoryAdvisor.builder(this.sessionService).build())
+			.defaultToolCallbacks(failing)
+			.build();
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon")));
+		say(client, "Book a flight to Lisbon");
+
+		assertThatThrownBy(() -> decide(client, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.hasMessageContaining("The booking system is down");
+
+		// The answer is recorded and the question closed; the turn ended with the error,
+		// and the call has a result that says so
+		assertThat(this.sessionService.turns().status(this.sessionId).stopReason()).isEqualTo(StopReason.ERROR);
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId)).isNull();
+		assertThat(answerEvents()).hasSize(1);
+		assertThat(toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId))))
+			.containsExactly(SessionTurnAdvisor.UNANSWERED_TOOL_RESULT);
+		assertThat(this.model.prompts()).hasSize(1);
+	}
+
+	@Test
+	void pauseLostToAnInterruptAnswersTheCalls() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> {
+			// The stop button is pressed while the model thinks
+			this.sessionService.turns().interrupt(this.sessionId, "stop");
+			return calls(call("c1", "bookFlight", "Lisbon"));
+		}).thenAnswer("Sure.");
+
+		ChatClientResponse response = client.prompt()
+			.user("Book a flight to Lisbon")
+			.advisors(SessionAdvisors.session(this.sessionId))
+			.call()
+			.chatClientResponse();
+
+		// The caller holds the paused reply, but the interrupt stands: no question was
+		// asked, and the calls have their result in the log
+		assertThat(ToolCallDecisions.awaitingDecision(response.chatResponse())).containsExactly("c1");
+		assertThat(this.sessionService.turns().status(this.sessionId).stopReason()).isEqualTo(StopReason.INTERRUPTED);
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId)).isNull();
+		assertThat(toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId))))
+			.containsExactly(SessionTurnAdvisor.UNANSWERED_TOOL_RESULT);
+		// Decisions have nothing to answer; new text runs on a whole log
+		assertThatIllegalStateException()
+			.isThrownBy(() -> decide(client, ToolCallDecisions.of(ToolCallDecision.allow("c1"))));
+		assertThat(say(client, "Never mind.")).isEqualTo("Sure.");
+		assertThat(ScriptedChatModel.describe(this.model.prompts().get(1))).containsExactly("Book a flight to Lisbon",
+				"call:c1", "result:c1", "Never mind.");
+		assertThat(this.ran).isEmpty();
+	}
+
+	@Test
+	void pauseWithoutTheStoredReplyFailsFast() {
+		// No memory advisor: the reply is never stored, so the question could never be
+		// answered
+		ChatClient client = ChatClient.builder(this.model)
+			.defaultAdvisors(SessionTurnAdvisor.builder(this.sessionService).build(),
+					ToolCallingAdvisor.builder().build())
+			.defaultToolCallbacks(gated("bookFlight"))
+			.build();
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon")));
+
+		assertThatIllegalStateException().isThrownBy(() -> say(client, "Book a flight to Lisbon"))
+			.withMessageContaining("is the memory advisor registered inside the tool-calling loop?");
+
+		TurnStatus status = this.sessionService.turns().status(this.sessionId);
+		assertThat(status.isParked()).isFalse();
+		assertThat(status.stopReason()).isEqualTo(StopReason.ERROR);
+		assertThat(this.sessionService.turns().pendingQuestion(this.sessionId)).isNull();
+	}
+
+	@Test
+	void resumedCallsCountTowardTheTurnsToolCallLimit() {
+		// One tool call per turn: the weather call of the first round uses it up
+		ToolCallingManager limited = ToolCallingManager.builder()
+			.maxTotalToolCalls(1)
+			.onLimitExceeded(ToolCallLimitBehavior.RETURN_ERROR_RESPONSE)
+			.build();
+		ChatClient client = ChatClient.builder(this.model)
+			.defaultAdvisors(SessionTurnAdvisor.builder(this.sessionService).toolCallingManager(limited).build(),
+					ToolCallingAdvisor.builder().build(), SessionMemoryAdvisor.builder(this.sessionService).build())
+			.defaultToolCallbacks(weather(), gated("bookFlight"))
+			.build();
+		this.model.then(prompt -> calls(call("c0", "get_weather", "Lisbon")))
+			.then(prompt -> calls(call("c1", "bookFlight", "Lisbon")))
+			.thenAnswer("Understood.");
+		say(client, "Book a flight to Lisbon if the weather is good");
+
+		assertThat(decide(client, ToolCallDecisions.of(ToolCallDecision.allow("c1")))).isEqualTo("Understood.");
+
+		// The allowed call broke the limit instead of running, and the model was told
+		assertThat(this.ran).isEmpty();
+		List<String> results = toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId)));
+		assertThat(results).hasSize(2);
+		assertThat(results.get(1)).isNotEqualTo("\"Booked Lisbon\"").containsIgnoringCase("limit");
+	}
+
+	@Test
+	void streamedBusySessionFailsTheStream() {
+		this.sessionService.create(CreateSessionRequest.builder().id(this.sessionId).build());
+		this.sessionService.turns().start(this.sessionId, "other");
+		this.model.thenAnswer("Hi!");
+
+		assertThatThrownBy(() -> client().prompt()
+			.user("Hello")
+			.advisors(SessionAdvisors.session(this.sessionId))
+			.stream()
+			.content()
+			.blockLast()).isInstanceOf(TurnInProgressException.class);
+
+		assertThat(this.model.prompts()).isEmpty();
+		assertThat(this.sessionService.turns().status(this.sessionId).isRunning("other")).isTrue();
+	}
+
+	@Test
+	void streamedDecisionsResumeTheTurn() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Booked!");
+		say(client, "Book a flight to Lisbon");
+
+		String answer = String.join("", client.prompt()
+			.advisors(SessionAdvisors.decisions(this.sessionId, ToolCallDecisions.of(ToolCallDecision.allow("c1"))))
+			.stream()
+			.content()
+			.collectList()
+			.block());
+
+		assertThat(answer).isEqualTo("Booked!");
+		assertThat(this.ran).containsExactly("bookFlight");
+		assertThat(this.sessionService.turns().status(this.sessionId).stopReason()).isEqualTo(StopReason.END_TURN);
+		assertThat(toolResults(new Prompt(this.sessionService.getActiveMessages(this.sessionId))))
+			.containsExactly("\"Booked Lisbon\"");
+	}
+
+	@Test
+	void streamedNewTextOnAParkedSessionResolvesThePauseFirst() {
+		ChatClient client = looped(gated("bookFlight"));
+		this.model.then(prompt -> calls(call("c1", "bookFlight", "Lisbon"))).thenAnswer("Sure, what else?");
+		say(client, "Book a flight to Lisbon");
+
+		String answer = String.join("",
+				client.prompt()
+					.user("Never mind.")
+					.advisors(SessionAdvisors.session(this.sessionId))
+					.stream()
+					.content()
+					.collectList()
+					.block());
+
+		assertThat(answer).isEqualTo("Sure, what else?");
+		assertThat(this.ran).isEmpty();
+		assertThat(answerEvents()).hasSize(1);
+		assertThat(ScriptedChatModel.describe(this.model.prompts().get(1))).containsExactly("Book a flight to Lisbon",
+				"call:c1", "result:c1", "Never mind.");
+	}
+
+	/** Sends the decisions on the parked session, with no user message. */
+	private String decide(ChatClient client, ToolCallDecisions decisions) {
+		return client.prompt().advisors(SessionAdvisors.decisions(this.sessionId, decisions)).call().content();
+	}
+
+	/** A tool a person has to confirm; it books a flight to the city. */
+	private ToolCallback gated(String name) {
+		return tool(name, "Booked ", ToolMetadata.builder().requiresConfirmation(true).build());
+	}
+
+	private List<SessionEvent> answerEvents() {
+		return this.sessionService.getEvents(this.sessionId)
+			.stream()
+			.filter(event -> EventType.ANSWER.equals(event.getType()))
+			.toList();
+	}
 
 	private ChatClient client() {
 		return client(weather(), ToolCallingAdvisor.builder().build());
