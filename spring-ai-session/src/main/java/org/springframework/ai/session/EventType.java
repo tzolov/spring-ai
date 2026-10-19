@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import org.springframework.ai.session.question.Answer;
+import org.springframework.ai.session.question.Question;
+import org.springframework.ai.session.question.QuestionEvents;
 import org.springframework.ai.session.status.SessionStatusEvents;
 import org.springframework.ai.session.status.StopReason;
 import org.springframework.ai.session.status.TurnService;
@@ -72,6 +75,22 @@ public final class EventType {
 	 * same append ends it.
 	 */
 	public static final EventType INTERRUPT = of("INTERRUPT");
+
+	/**
+	 * A question the turn parked on, waiting for an answer from outside: a person's
+	 * decision on a tool call, for example. Recorded by {@link TurnService#park} with the
+	 * {@link #STATUS} event that parks the turn; the newest one no {@link #ANSWER} points
+	 * at is what the session waits on. {@link QuestionEvents} builds these events and
+	 * {@link Question} reads them.
+	 */
+	public static final EventType QUESTION = of("QUESTION");
+
+	/**
+	 * The answer to a {@link #QUESTION}, pointing at it by event id. Recorded by
+	 * {@link TurnService#resume} with the {@link #STATUS} event that starts the turn
+	 * again. {@link Answer} reads it.
+	 */
+	public static final EventType ANSWER = of("ANSWER");
 
 	private static final Set<EventType> MESSAGE_BEARING = Set.of(MESSAGE);
 
