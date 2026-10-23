@@ -15,10 +15,10 @@ Sources: the SDK's `io.modelcontextprotocol.modern.McpSchema` (`2.2.0-SNAPSHOT`)
 | 3 | Cache hints on `resources/read` (SEP-2549) | yes: `@McpResource(ttlMs, cacheScope)` | ✅ verified 2026-10-23: the SDK's `McpServer.resultResponse` already forces `ttlMs = 0`/`PRIVATE` on retry; covered by a Spring AI test, no callback code | handling (SDK-side) |
 | 4 | Logging per request: `_meta.logLevel` + `notifications/message` on the request stream (deprecated, SEP-2577) | ✅ done 2026-10-23 (was: no log API on the modern context) | `McpModernSyncRequestContext.log(level, message)` family honouring `_meta.logLevel`; `ctx.logLevel()`; nothing on annotations | context API |
 | 5 | Progress | yes: `McpModernSyncRequestContext.progress(...)`, `@McpProgressToken` | none | — |
-| 6 | Icons on `Tool`, `Resource`, `ResourceTemplate`, `Prompt` | no (also missing on the legacy path) | `@McpIcon` nested annotation, `icons = {...}` attribute on the three annotations | new attribute |
-| 7 | `PromptArgument.title` | no | `@McpArg(title = ...)` | new attribute |
-| 8 | `Resource.size` | no | `@McpResource(size = ...)`, default unset | new attribute, low value |
-| 9 | `x-mcp-header`: mirror a tool parameter into an `Mcp-Param-{name}` HTTP header (SEP-2243) | no | `@McpToolParam(header = true)` emits the schema keyword; transport validation is an SDK item | new attribute + SDK |
+| 6 | Icons on `Tool`, `Resource`, `ResourceTemplate`, `Prompt` | ✅ done 2026-10-23 (`@McpIcon`) | `@McpIcon` nested annotation, `icons = {...}` attribute on the three annotations | new attribute |
+| 7 | `PromptArgument.title` | ✅ done 2026-10-23 | `@McpArg(title = ...)` | new attribute |
+| 8 | `Resource.size` | ✅ done 2026-10-23 | `@McpResource(size = ...)`, default unset | new attribute, low value |
+| 9 | `x-mcp-header`: mirror a tool parameter into an `Mcp-Param-{name}` HTTP header (SEP-2243) | ✅ schema side done 2026-10-23 (`@McpToolParam(header = true)`); transport validation still an SDK item | `@McpToolParam(header = true)` emits the schema keyword; transport validation is an SDK item | new attribute + SDK |
 | 10 | Loosened `inputSchema` / `outputSchema` (any JSON Schema 2020-12, SEP-2106) | partly: generated from Java types; `generateOutputSchema` | optional `inputSchema` / `outputSchema` string attributes to hand-write a schema | new attribute, optional |
 | 11 | Deterministic `tools/list` order | yes: providers sort by method name, repositories by tool name | none | — |
 | 12 | `subscriptions/listen`, `resources.subscribe` redefined as the `resourceSubscriptions` filter | server-wide capability, repository API `resourceUpdated(uri)` | drop the planned per-resource `subscribe` flag on `@McpResource`: the spec has no per-resource opt-in | remove planned item |

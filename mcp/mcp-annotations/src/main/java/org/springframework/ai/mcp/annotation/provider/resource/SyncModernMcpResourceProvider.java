@@ -27,6 +27,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.ai.mcp.annotation.McpResource;
+import org.springframework.ai.mcp.annotation.common.IconUtils;
 import org.springframework.ai.mcp.annotation.common.McpPredicates;
 import org.springframework.ai.mcp.annotation.common.MetaUtils;
 import org.springframework.ai.mcp.annotation.common.ModernMethodSupport;
@@ -60,6 +61,8 @@ public class SyncModernMcpResourceProvider {
 			McpSchema.Resource resource = McpSchema.Resource.builder(annotation.uri(), name(entry.method(), annotation))
 				.description(annotation.description())
 				.mimeType(annotation.mimeType())
+				.size(annotation.size() >= 0 ? annotation.size() : null)
+				.icons(IconUtils.toIcons(annotation.icons()))
 				.meta(MetaUtils.getMeta(annotation.metaProvider()))
 				.build();
 			SyncModernMcpResourceMethodCallback callback = SyncModernMcpResourceMethodCallback.builder()
@@ -82,6 +85,7 @@ public class SyncModernMcpResourceProvider {
 				.builder(annotation.uri(), name(entry.method(), annotation))
 				.description(annotation.description())
 				.mimeType(annotation.mimeType())
+				.icons(IconUtils.toIcons(annotation.icons()))
 				.meta(MetaUtils.getMeta(annotation.metaProvider()))
 				.build();
 			SyncModernMcpResourceMethodCallback callback = SyncModernMcpResourceMethodCallback.builder()

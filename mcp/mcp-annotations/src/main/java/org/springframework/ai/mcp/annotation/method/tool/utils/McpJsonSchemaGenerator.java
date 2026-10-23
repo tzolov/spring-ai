@@ -201,6 +201,16 @@ public final class McpJsonSchemaGenerator {
 			if (Utils.hasText(parameterDescription)) {
 				parameterNode.put("description", parameterDescription);
 			}
+			McpToolParam toolParam = parameter.getAnnotation(McpToolParam.class);
+			if (toolParam != null && toolParam.header()) {
+				if (!isHeaderMirrorable(parameter.getType())) {
+					throw new IllegalArgumentException(
+							"@McpToolParam(header = true) is only allowed on string, integer "
+									+ "and boolean parameters: " + parameterName + " of " + method.getName() + " is "
+									+ parameter.getType().getName());
+				}
+				parameterNode.put(X_MCP_HEADER, "Mcp-Param-" + parameterName);
+			}
 			properties.set(parameterName, parameterNode);
 		}
 
@@ -259,6 +269,18 @@ public final class McpJsonSchemaGenerator {
 	private static boolean isModernInfrastructureType(Class<?> type) {
 		return ModernMethodSupport.isInfrastructureParameter(type,
 				io.modelcontextprotocol.modern.McpSchema.CallToolRequest.class);
+	}
+
+	/**
+	 * Schema keyword of the 2026-07-28 revision that asks Streamable HTTP clients to
+	 * mirror a parameter into an HTTP header.
+	 */
+	private static final String X_MCP_HEADER = "x-mcp-header";
+
+	private static boolean isHeaderMirrorable(Class<?> type) {
+		return type == String.class || type == boolean.class || type == Boolean.class || type == int.class
+				|| type == Integer.class || type == long.class || type == Long.class || type == short.class
+				|| type == Short.class || type == byte.class || type == Byte.class;
 	}
 
 	private static boolean isMethodParameterRequired(Method method, int index) {

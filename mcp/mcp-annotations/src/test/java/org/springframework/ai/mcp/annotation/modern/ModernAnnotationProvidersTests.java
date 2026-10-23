@@ -60,6 +60,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 import org.springframework.ai.mcp.annotation.McpArg;
 import org.springframework.ai.mcp.annotation.McpComplete;
+import org.springframework.ai.mcp.annotation.McpIcon;
 import org.springframework.ai.mcp.annotation.McpPrompt;
 import org.springframework.ai.mcp.annotation.McpResource;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -69,6 +70,7 @@ import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.ai.mcp.annotation.method.resource.SyncModernMcpResourceMethodCallback;
 import org.springframework.ai.mcp.annotation.method.tool.ReturnMode;
 import org.springframework.ai.mcp.annotation.method.tool.SyncModernMcpToolMethodCallback;
+import org.springframework.ai.mcp.annotation.method.tool.utils.McpJsonSchemaGenerator;
 import org.springframework.ai.mcp.annotation.spring.SyncMcpAnnotationProviders;
 import org.springframework.ai.mcp.modern.InMemorySyncCompletionRepository;
 import org.springframework.ai.mcp.modern.InMemorySyncPromptRepository;
@@ -517,6 +519,43 @@ class ModernAnnotationProvidersTests {
 				"a:topic");
 	}
 
+	@Test
+	@SuppressWarnings("unchecked")
+	void definitionAttributesArePublishedOnBothPaths() throws Exception {
+		Decorated bean = new Decorated();
+
+		// modern path
+		var tool = SyncMcpAnnotationProviders.modernToolSpecifications(List.of(bean)).get(0).tool();
+		assertThat(tool.icons()).extracting(icon -> icon.src()).containsExactly("https://example.com/icon.png");
+		assertThat(tool.icons().get(0).theme()).isEqualTo("dark");
+		Map<String, Object> tenant = (Map<String, Object>) ((Map<String, Object>) tool.inputSchema().get("properties"))
+			.get("tenant");
+		assertThat(tenant.get("x-mcp-header")).isEqualTo("Mcp-Param-tenant");
+		var resource = SyncMcpAnnotationProviders.modernResourceSpecifications(List.of(bean)).get(0).resource();
+		assertThat(resource.size()).isEqualTo(42L);
+		assertThat(resource.icons()).hasSize(1);
+		var prompt = SyncMcpAnnotationProviders.modernPromptSpecifications(List.of(bean)).get(0).prompt();
+		assertThat(prompt.icons()).hasSize(1);
+		assertThat(prompt.arguments().get(0).title()).isEqualTo("Topic");
+
+		// legacy path, same annotations
+		assertThat(SyncMcpAnnotationProviders.toolSpecifications(List.of(bean)).get(0).tool().icons()).hasSize(1);
+		assertThat(SyncMcpAnnotationProviders.resourceSpecifications(List.of(bean)).get(0).resource().size())
+			.isEqualTo(42L);
+		assertThat(SyncMcpAnnotationProviders.promptSpecifications(List.of(bean))
+			.get(0)
+			.prompt()
+			.arguments()
+			.get(0)
+			.title()).isEqualTo("Topic");
+
+		// header mirroring is restricted to primitives
+		assertThatThrownBy(() -> McpJsonSchemaGenerator
+			.generateForMethodInput(Decorated.class.getDeclaredMethod("badHeader", Map.class)))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("header = true");
+	}
+
 	@SuppressWarnings("unused")
 	static class Tools {
 
@@ -641,6 +680,33 @@ class ModernAnnotationProvidersTests {
 		@McpResource(uri = "test://broken", name = "broken", description = "broken")
 		String readBroken() {
 			throw new IllegalStateException("broken");
+		}
+
+	}
+
+	static class Decorated {
+
+		@McpTool(name = "iconic", description = "Has an icon and a header parameter",
+				icons = @McpIcon(src = "https://example.com/icon.png", mimeType = "image/png", sizes = "48x48",
+						theme = "dark"))
+		String iconic(@McpToolParam(description = "Tenant", header = true) String tenant) {
+			return tenant;
+		}
+
+		@McpResource(uri = "test://sized", name = "sized", description = "sized", size = 42,
+				icons = @McpIcon(src = "https://example.com/resource.svg"))
+		String sized() {
+			return "x";
+		}
+
+		@McpPrompt(name = "titled", description = "titled", icons = @McpIcon(src = "https://example.com/prompt.svg"))
+		String titled(@McpArg(name = "topic", title = "Topic", required = true) String topic) {
+			return topic;
+		}
+
+		@SuppressWarnings("unused")
+		String badHeader(@McpToolParam(header = true) Map<String, Object> options) {
+			return "";
 		}
 
 	}
