@@ -1,6 +1,6 @@
 # Proposed MCP Java SDK changes for modern server transports
 
-Status date: 2026-10-22, SDK `2.2.0-SNAPSHOT`.
+Status date: 2026-10-23, SDK `2.2.0-SNAPSHOT`.
 Based on three transports: the SDK's `HttpServletMcpTransport`, Spring AI's `WebMvcModernServerTransport`, and `WebFluxMcpTransport`.
 
 ## Problem
@@ -29,6 +29,14 @@ About 350 lines are duplicated across the two Spring transports, and the review-
 2. Items 4 and 6, since they change `McpRequestManager` semantics.
 3. Items 7 and 10.
 4. Item 9 as its own feature; item 8 anytime.
+
+## General asks beyond transports
+
+| # | Change | Why |
+|---|---|---|
+| 11 | Let a feature opt in to the `logging` server capability in `ServerCapabilities.Builder.build()` (today hard-coded to null, "not offered by modern servers"), and reject an unrecognised `_meta.io.modelcontextprotocol/logLevel` with `-32602` in `McpServer` | the 2026-07-28 logging page says a server that emits `notifications/message` MUST declare `logging` and SHOULD reject bad levels; Spring AI's per-request `log*` API on `McpModernSyncRequestContext` emits correctly but cannot advertise, so spec-following clients never ask for logs |
+
+Logging is deprecated by SEP-2577, so a deliberate "no" is a valid answer; then Spring AI drops or hides its `log*` API.
 
 ## What remains transport-specific
 

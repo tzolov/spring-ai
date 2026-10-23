@@ -300,7 +300,10 @@ void addLater() {
 
 Compared to the session-based servers:
 
-* `ctx.elicit(...)`, `ctx.sample(...)`, `ctx.roots()` and `ctx.ping()` have no direct equivalent. Elicitation, sampling and roots are multi round-trip requests; `ping` is gone. Logging is deprecated and per request: the client opts in with `_meta.logLevel`, and `McpModernSyncRequestContext.info(...)`, `debug`, `warn`, `error` and `log(level, logger, data)` send `notifications/message` on that request's stream, or do nothing when the client did not ask.
+* `ctx.elicit(...)`, `ctx.sample(...)`, `ctx.roots()` and `ctx.ping()` have no direct equivalent.
+Elicitation, sampling and roots are multi round-trip requests; `ping` is gone.
+Logging is deprecated and per request: the client opts in with `_meta.logLevel`, and `McpModernSyncRequestContext.info(...)`, `debug`, `warn`, `error` and `log(level, logger, data)` send `notifications/message` on that request's stream, or do nothing when the client did not ask.
+Note that the SDK does not yet advertise the `logging` capability in `server/discover`, so clients that check capabilities first will not opt in.
 * Progress requires a streaming response, which the modern context parameter enables automatically.
 * Clients must send the `Mcp-Method`, `MCP-Protocol-Version` and, for `tools/call`, `prompts/get` and `resources/read`, the `Mcp-Name` header consistent with the body. Requests that disagree are rejected with JSON-RPC error `-32020`.
 * `server/discover` replaces `initialize`; its caching hints and the list caching hints are controlled by the properties above.

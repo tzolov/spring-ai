@@ -13,7 +13,7 @@ Sources: the SDK's `io.modelcontextprotocol.modern.McpSchema` (`2.2.0-SNAPSHOT`)
 | 1 | MRTR: elicitation form and URL, sampling, roots (SEP-2322) | yes, imperatively: return `InputRequiredResult`, read `ctx.inputResponse(key, type)` on retry | parameter annotations `@McpElicit`, `@McpSample`, `@McpRoots`, `@McpInputResponse`, `@McpRequestState`; callback generates the `InputRequiredResult` | new annotations + handling |
 | 2 | `-32021 MissingRequiredClientCapability` | ✅ done 2026-10-23 (was: no); a handler that asks for elicitation from a client without the capability gets an opaque failure | callback checks `clientCapabilities` before invoking an MRTR method and before returning an `InputRequiredResult`; raises `-32021` with `requiredCapabilities` | handling |
 | 3 | Cache hints on `resources/read` (SEP-2549) | yes: `@McpResource(ttlMs, cacheScope)` | ✅ verified 2026-10-23: the SDK's `McpServer.resultResponse` already forces `ttlMs = 0`/`PRIVATE` on retry; covered by a Spring AI test, no callback code | handling (SDK-side) |
-| 4 | Logging per request: `_meta.logLevel` + `notifications/message` on the request stream (deprecated, SEP-2577) | ✅ done 2026-10-23 (was: no log API on the modern context) | `McpModernSyncRequestContext.log(level, message)` family honouring `_meta.logLevel`; `ctx.logLevel()`; nothing on annotations | context API |
+| 4 | Logging per request: `_meta.logLevel` + `notifications/message` on the request stream (deprecated, SEP-2577) | ✅ done 2026-10-23 (was: no log API on the modern context) | `McpModernSyncRequestContext.log(level, message)` family honouring `_meta.logLevel`; `ctx.logLevel()`; nothing on annotations. Open: the SDK hard-codes the `logging` capability to null, see SDK proposal #11 | context API |
 | 5 | Progress | yes: `McpModernSyncRequestContext.progress(...)`, `@McpProgressToken` | none | — |
 | 6 | Icons on `Tool`, `Resource`, `ResourceTemplate`, `Prompt` | ✅ done 2026-10-23 (`@McpIcon`) | `@McpIcon` nested annotation, `icons = {...}` attribute on the three annotations | new attribute |
 | 7 | `PromptArgument.title` | ✅ done 2026-10-23 | `@McpArg(title = ...)` | new attribute |
@@ -156,6 +156,11 @@ Proposal.
 Add to the context: `Optional<LoggingLevel> logLevel()`, `boolean logEnabled(LoggingLevel)`, `void log(LoggingLevel level, String logger, Object data)` and the `debug/info/warn/error` shorthands, all no-ops when the client did not ask for logs or asked for a higher threshold.
 Declaring the context already makes the response a stream, which is what `notifications/message` needs.
 No annotation change.
+
+Caveat found after implementation.
+The logging page also says a server that emits `notifications/message` MUST declare the `logging` capability and SHOULD reject an unrecognised level with `-32602`.
+The SDK's `ServerCapabilities.Builder.build()` hard-codes `logging` to null on purpose ("not offered by modern servers") and does not validate the level, so a Spring AI server emits logs it never advertises.
+Both points are raised as SDK proposal #11 in [SDK-TRANSPORT-PROPOSALS.md](SDK-TRANSPORT-PROPOSALS.md); until answered, a spec-following client will not set the key and the API is a no-op.
 
 ### 2.5 Icons, titles and sizes on definitions
 
