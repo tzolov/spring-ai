@@ -24,7 +24,12 @@ import java.util.function.Predicate;
 
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.modern.McpException;
+import io.modelcontextprotocol.modern.McpSchema;
+import io.modelcontextprotocol.modern.McpSchema.ClientCapabilities;
+import io.modelcontextprotocol.modern.McpSchema.ElicitUrlRequest;
 import io.modelcontextprotocol.modern.McpSchema.ErrorCodes;
+import io.modelcontextprotocol.modern.McpSchema.InputRequest;
+import io.modelcontextprotocol.modern.McpSchema.InputRequiredResult;
 import io.modelcontextprotocol.modern.server.McpRequestContext;
 import io.modelcontextprotocol.modern.server.McpSyncNotifier;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
@@ -106,6 +111,87 @@ public final class ModernMethodSupport {
 					+ parameterType.getName() + "; use McpModernSyncRequestContext instead. Method: " + method.getName()
 					+ " in " + method.getDeclaringClass().getName());
 		}
+	}
+
+	/**
+	 * Enforces the 2026-07-28 rule that a server must not request input the client did
+	 * not declare a capability for. When {@code outcome} is an
+	 * {@code InputRequiredResult}, every input request is checked against
+	 * {@code ctx.clientCapabilities()}; the first missing capability is reported as
+	 * JSON-RPC error {@code -32021} whose data names the capabilities the request needs.
+	 * Any other outcome passes through untouched.
+	 * @param ctx the request context carrying the client's declared capabilities
+	 * @param outcome the handler's result
+	 * @throws McpException {@code -32021 Missing required client capability}
+	 * @since 2.2.0
+	 */
+	public static void checkClientCapabilities(McpRequestContext ctx, @Nullable Object outcome) {
+		if (!(outcome instanceof InputRequiredResult inputRequired) || inputRequired.inputRequests() == null) {
+			return;
+		}
+		ClientCapabilities declared = ctx.clientCapabilities();
+		boolean needsForm = false;
+		boolean needsUrl = false;
+		boolean needsSampling = false;
+		boolean needsRoots = false;
+		for (InputRequest request : inputRequired.inputRequests().values()) {
+			switch (request.method()) {
+				case McpSchema.METHOD_ELICITATION_CREATE -> {
+					if (isUrlElicitation(request.params())) {
+						if (!declared.supportsElicitationUrl()) {
+							needsUrl = true;
+						}
+					}
+					else if (!declared.supportsElicitationForm()) {
+						needsForm = true;
+					}
+				}
+				case McpSchema.METHOD_SAMPLING_CREATE_MESSAGE -> {
+					if (!declared.supportsSampling()) {
+						needsSampling = true;
+					}
+				}
+				case McpSchema.METHOD_ROOTS_LIST -> {
+					if (!declared.supportsRoots()) {
+						needsRoots = true;
+					}
+				}
+				default -> {
+					// unknown input request kinds are the SDK's concern
+				}
+			}
+		}
+		if (!(needsForm || needsUrl || needsSampling || needsRoots)) {
+			return;
+		}
+		ClientCapabilities.Builder required = ClientCapabilities.builder();
+		if (needsForm || needsUrl) {
+			required.elicitation(
+					new ClientCapabilities.Elicitation(needsForm ? new ClientCapabilities.Elicitation.Form() : null,
+							needsUrl ? new ClientCapabilities.Elicitation.Url() : null));
+		}
+		if (needsSampling) {
+			required.sampling();
+		}
+		if (needsRoots) {
+			required.roots();
+		}
+		throw McpException.missingClientCapability(required.build());
+	}
+
+	/**
+	 * An elicitation is URL mode when its params say so: the SDK record, or any other
+	 * representation (a map built by hand, or one round-tripped through JSON) whose
+	 * {@code mode} field is {@code "url"}. Everything else is form mode, the default.
+	 */
+	private static boolean isUrlElicitation(@Nullable Object params) {
+		if (params instanceof ElicitUrlRequest) {
+			return true;
+		}
+		if (params instanceof Map<?, ?> map) {
+			return ElicitUrlRequest.MODE.equals(map.get("mode"));
+		}
+		return false;
 	}
 
 	/**

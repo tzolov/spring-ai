@@ -11,8 +11,8 @@ Sources: the SDK's `io.modelcontextprotocol.modern.McpSchema` (`2.2.0-SNAPSHOT`)
 | # | Spec feature (SEP) | Expressible today | Proposal | Kind |
 |---|---|---|---|---|
 | 1 | MRTR: elicitation form and URL, sampling, roots (SEP-2322) | yes, imperatively: return `InputRequiredResult`, read `ctx.inputResponse(key, type)` on retry | parameter annotations `@McpElicit`, `@McpSample`, `@McpRoots`, `@McpInputResponse`, `@McpRequestState`; callback generates the `InputRequiredResult` | new annotations + handling |
-| 2 | `-32021 MissingRequiredClientCapability` | no; a handler that asks for elicitation from a client without the capability gets an opaque failure | callback checks `clientCapabilities` before invoking an MRTR method and before returning an `InputRequiredResult`; raises `-32021` with `requiredCapabilities` | handling |
-| 3 | Cache hints on `resources/read` (SEP-2549) | yes: `@McpResource(ttlMs, cacheScope)` | none new; but results of MRTR retries MUST NOT be cached, and the callback currently stamps hints on them | handling (compliance bug) |
+| 2 | `-32021 MissingRequiredClientCapability` | ✅ done 2026-10-23 (was: no); a handler that asks for elicitation from a client without the capability gets an opaque failure | callback checks `clientCapabilities` before invoking an MRTR method and before returning an `InputRequiredResult`; raises `-32021` with `requiredCapabilities` | handling |
+| 3 | Cache hints on `resources/read` (SEP-2549) | yes: `@McpResource(ttlMs, cacheScope)` | ✅ verified 2026-10-23: the SDK's `McpServer.resultResponse` already forces `ttlMs = 0`/`PRIVATE` on retry; covered by a Spring AI test, no callback code | handling (SDK-side) |
 | 4 | Logging per request: `_meta.logLevel` + `notifications/message` on the request stream (deprecated, SEP-2577) | no; the modern context has `notify(method, params)` but no log API, and the design docs wrongly said logging was removed | `McpModernSyncRequestContext.log(level, message)` family honouring `_meta.logLevel`; `ctx.logLevel()`; nothing on annotations | context API |
 | 5 | Progress | yes: `McpModernSyncRequestContext.progress(...)`, `@McpProgressToken` | none | — |
 | 6 | Icons on `Tool`, `Resource`, `ResourceTemplate`, `Prompt` | no (also missing on the legacy path) | `@McpIcon` nested annotation, `icons = {...}` attribute on the three annotations | new attribute |
@@ -137,7 +137,8 @@ Today.
 `@McpResource(ttlMs, cacheScope)` is stamped on every converted legacy result, including retries.
 
 Proposal.
-In `SyncModernMcpResourceMethodCallback`, when `ctx.isRetry()` is true, emit `ttlMs = 0` and keep `cacheScope = PRIVATE` regardless of the annotation.
+The SDK already applies this in `McpServer.resultResponse` for every `CacheableResult` when `ctx.isRetry()` is true, so the callback needs no code.
+Spring AI keeps a test that reads a gated resource twice and asserts the retry answer carries `ttlMs = 0`.
 Document the rule on the attribute.
 
 ### 2.4 Logging
@@ -239,7 +240,7 @@ The Tasks extension is not modelled by the SDK.
 
 | Change | Where | Why |
 |---|---|---|
-| Retry results carry `ttlMs = 0` | `SyncModernMcpResourceMethodCallback` | spec: MRTR retry results MUST NOT be cached |
+| Retry results carry `ttlMs = 0` | SDK `McpServer.resultResponse`, tested in Spring AI | spec: MRTR retry results MUST NOT be cached |
 | `-32021` when an `InputRequiredResult` needs an undeclared client capability | `ModernMethodSupport` | spec: MUST NOT request undeclared capabilities |
 | `log*` on the modern context, gated by `_meta.logLevel` | `DefaultMcpModernSyncRequestContext` | spec: MUST NOT send `notifications/message` unless asked |
 | `@McpComplete` rejects MRTR parameter annotations | completion callback | spec: MRTR only on call, read, get |

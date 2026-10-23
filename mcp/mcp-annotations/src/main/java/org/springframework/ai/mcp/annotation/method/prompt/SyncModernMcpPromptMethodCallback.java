@@ -106,6 +106,7 @@ public final class SyncModernMcpPromptMethodCallback extends AbstractMcpPromptMe
 			this.method.setAccessible(true);
 			Object result = this.method.invoke(this.bean, args);
 			if (result instanceof GetPromptOutcome outcome) {
+				ModernMethodSupport.checkClientCapabilities(context, outcome);
 				return outcome;
 			}
 			return McpSchemaConverter.toModern(this.convertToGetPromptResult(result));

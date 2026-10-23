@@ -131,6 +131,7 @@ public final class SyncModernMcpToolMethodCallback
 			}
 			Object result = callMethod(args);
 			if (result instanceof CallToolOutcome outcome) {
+				ModernMethodSupport.checkClientCapabilities(context, outcome);
 				return outcome;
 			}
 			return McpSchemaConverter.toModern(processResult(result));

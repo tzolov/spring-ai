@@ -131,6 +131,7 @@ public final class SyncModernMcpResourceMethodCallback extends AbstractMcpResour
 			this.method.setAccessible(true);
 			Object result = this.method.invoke(this.bean, args);
 			if (result instanceof ReadResourceOutcome outcome) {
+				ModernMethodSupport.checkClientCapabilities(context, outcome);
 				return outcome;
 			}
 			io.modelcontextprotocol.modern.McpSchema.ReadResourceResult converted = McpSchemaConverter

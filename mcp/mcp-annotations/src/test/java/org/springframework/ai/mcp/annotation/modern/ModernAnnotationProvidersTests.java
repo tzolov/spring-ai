@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.modern.JsonRpc.JSONRPCMessage;
 import io.modelcontextprotocol.modern.JsonRpc.JSONRPCNotification;
 import io.modelcontextprotocol.modern.JsonRpc.JSONRPCRequest;
@@ -31,16 +32,19 @@ import io.modelcontextprotocol.modern.McpSchema.CallToolOutcome;
 import io.modelcontextprotocol.modern.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.modern.McpSchema.CompleteRequest;
 import io.modelcontextprotocol.modern.McpSchema.CompleteResult;
+import io.modelcontextprotocol.modern.McpSchema.CreateMessageRequest;
 import io.modelcontextprotocol.modern.McpSchema.ElicitFormRequest;
 import io.modelcontextprotocol.modern.McpSchema.GetPromptOutcome;
 import io.modelcontextprotocol.modern.McpSchema.GetPromptRequest;
 import io.modelcontextprotocol.modern.McpSchema.Implementation;
+import io.modelcontextprotocol.modern.McpSchema.InputRequest;
 import io.modelcontextprotocol.modern.McpSchema.InputRequiredResult;
 import io.modelcontextprotocol.modern.McpSchema.MetaKeys;
 import io.modelcontextprotocol.modern.McpSchema.PromptMessage;
 import io.modelcontextprotocol.modern.McpSchema.ReadResourceOutcome;
 import io.modelcontextprotocol.modern.McpSchema.ReadResourceResult;
 import io.modelcontextprotocol.modern.McpSchema.Role;
+import io.modelcontextprotocol.modern.McpSchema.SamplingMessage;
 import io.modelcontextprotocol.modern.McpSchema.TextContent;
 import io.modelcontextprotocol.modern.McpSchema.TextResourceContents;
 import io.modelcontextprotocol.modern.server.McpServer;
@@ -51,6 +55,8 @@ import io.modelcontextprotocol.modern.server.feature.ResourcesFeature;
 import io.modelcontextprotocol.modern.server.feature.ToolsFeature;
 import io.modelcontextprotocol.spec.McpError;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import org.springframework.ai.mcp.annotation.McpArg;
 import org.springframework.ai.mcp.annotation.McpComplete;
@@ -86,7 +92,7 @@ class ModernAnnotationProvidersTests {
 		Map<String, Object> params = new HashMap<>();
 		Map<String, Object> meta = new HashMap<>();
 		meta.put(MetaKeys.PROTOCOL_VERSION, McpSchema.LATEST_PROTOCOL_VERSION);
-		meta.put(MetaKeys.CLIENT_CAPABILITIES, Map.of());
+		meta.put(MetaKeys.CLIENT_CAPABILITIES, Map.of("elicitation", Map.of("form", Map.of()), "sampling", Map.of()));
 		params.put("_meta", meta);
 		for (int i = 0; i < keyValues.length; i += 2) {
 			params.put((String) keyValues[i], keyValues[i + 1]);
@@ -129,6 +135,17 @@ class ModernAnnotationProvidersTests {
 			return (Map<String, Object>) ((JSONRPCResponse) messages.get(messages.size() - 1)).result();
 		}
 		throw new AssertionError("Not a result: " + ((McpTransportResponse.Error) response).response().error());
+	}
+
+	private static JSONRPCResponse finalResponse(McpTransportResponse response) {
+		if (response instanceof McpTransportResponse.Result result) {
+			return result.response();
+		}
+		if (response instanceof McpTransportResponse.Error error) {
+			return error.response();
+		}
+		List<JSONRPCMessage> messages = ((McpTransportResponse.Streaming) response).messages().collectList().block();
+		return (JSONRPCResponse) messages.get(messages.size() - 1);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -347,6 +364,56 @@ class ModernAnnotationProvidersTests {
 				"requestState", sealedState, "inputResponses", Map.of("pin", Map.of("action", "accept")))));
 		List<Map<String, Object>> contents = (List<Map<String, Object>>) second.get("contents");
 		assertThat(contents.get(0).get("text")).isEqualTo("gated-body state=pin-asked");
+		// 2026-07-28: results of MRTR retries must not be cached, whatever the handler
+		// set. The SDK applies this in McpServer.resultResponse; the test guards it.
+		assertThat(second.get("ttlMs")).isEqualTo(0L);
+		assertThat(second.get("cacheScope")).isEqualTo("private");
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void inputRequiredWithoutClientCapabilityIsRejected() {
+		Map<String, Object> params = params("uri", "test://gated");
+		((Map<String, Object>) params.get("_meta")).put(MetaKeys.CLIENT_CAPABILITIES, Map.of());
+		McpTransportResponse response = send(server(), McpSchema.METHOD_RESOURCES_READ, params);
+
+		// The handler declares the modern context, so the answer is a stream whose last
+		// message carries the error.
+		JSONRPCResponse error = finalResponse(response);
+		assertThat(error.error()).isNotNull();
+		assertThat(error.error().code()).isEqualTo(McpSchema.ErrorCodes.MISSING_REQUIRED_CLIENT_CAPABILITY);
+		Map<String, Object> data = McpJsonDefaults.getMapper().convertValue(error.error().data(), Map.class);
+		Map<String, Object> required = (Map<String, Object>) data.get("requiredCapabilities");
+		assertThat((Map<String, Object>) required.get("elicitation")).containsKey("form");
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "form, elicitation, form", "url, elicitation, url", "url-map, elicitation, url", "sampling, sampling,",
+			"roots, roots," })
+	@SuppressWarnings("unchecked")
+	void everyInputRequestKindIsCheckedAgainstClientCapabilities(String kind, String capability, String subCapability) {
+		Map<String, Object> params = params("name", "probe", "arguments", Map.of("kind", kind));
+		((Map<String, Object>) params.get("_meta")).put(MetaKeys.CLIENT_CAPABILITIES, Map.of());
+		JSONRPCResponse error = finalResponse(send(server(), McpSchema.METHOD_TOOLS_CALL, params));
+
+		assertThat(error.error()).isNotNull();
+		assertThat(error.error().code()).isEqualTo(McpSchema.ErrorCodes.MISSING_REQUIRED_CLIENT_CAPABILITY);
+		Map<String, Object> data = McpJsonDefaults.getMapper().convertValue(error.error().data(), Map.class);
+		Map<String, Object> required = (Map<String, Object>) data.get("requiredCapabilities");
+		assertThat(required).containsOnlyKeys(capability);
+		if (subCapability != null) {
+			assertThat((Map<String, Object>) required.get(capability)).containsOnlyKeys(subCapability);
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void inputRequestsPassWhenTheClientDeclaresTheCapability() {
+		Map<String, Object> params = params("name", "probe", "arguments", Map.of("kind", "url-map"));
+		((Map<String, Object>) params.get("_meta")).put(MetaKeys.CLIENT_CAPABILITIES,
+				Map.of("elicitation", Map.of("url", Map.of())));
+		Map<String, Object> result = result(send(server(), McpSchema.METHOD_TOOLS_CALL, params));
+		assertThat(result.get("resultType")).isEqualTo("input_required");
 	}
 
 	@Test
@@ -438,6 +505,29 @@ class ModernAnnotationProvidersTests {
 				.build();
 		}
 
+		@McpTool(name = "probe", description = "Returns one input request of the given kind")
+		CallToolOutcome probe(@McpToolParam(description = "kind") String kind) {
+			return switch (kind) {
+				case "form" -> InputRequiredResult.builder()
+					.elicit("k", ElicitFormRequest.builder("m", Map.of("type", "object")).build())
+					.build();
+				case "url" -> InputRequiredResult.builder().elicitUrl("k", "m", "https://example.com").build();
+				case "url-map" -> new InputRequiredResult(
+						Map.of("k",
+								new InputRequest(McpSchema.METHOD_ELICITATION_CREATE,
+										Map.of("mode", "url", "message", "m", "url", "https://example.com"))),
+						null, null, null);
+				case "sampling" -> InputRequiredResult.builder()
+					.createMessage("k",
+							CreateMessageRequest
+								.builder(List.of(new SamplingMessage(Role.USER, TextContent.builder("m").build())), 10)
+								.build())
+					.build();
+				case "roots" -> InputRequiredResult.builder().listRoots("k").build();
+				default -> throw new IllegalArgumentException(kind);
+			};
+		}
+
 		@McpTool(name = "legacy", description = "Returns a legacy result")
 		io.modelcontextprotocol.spec.McpSchema.CallToolResult legacy() {
 			return io.modelcontextprotocol.spec.McpSchema.CallToolResult.builder().addTextContent("legacy").build();
@@ -497,8 +587,11 @@ class ModernAnnotationProvidersTests {
 					.requestState("pin-asked")
 					.build();
 			}
+			// Cache hints on a retry result must be dropped by the callback.
 			return ReadResourceResult.builder(List
 				.of(TextResourceContents.builder(request.uri(), "gated-body state=" + request.requestState()).build()))
+				.ttlMs(5000)
+				.cacheScope(CacheScope.PUBLIC)
 				.build();
 		}
 
