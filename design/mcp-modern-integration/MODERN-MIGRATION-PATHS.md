@@ -40,7 +40,7 @@ What each server offers. ✅ supported · ⚠️ partial / different · ❌ not 
 | Elicitation (`ctx.elicit`) | ✅ blocking | ✅ blocking | ❌ | ➡️ MRTR: return `InputRequiredResult.elicit(...)`, read `ctx.inputResponse(...)` on retry |
 | Sampling (`ctx.sample`) | ✅ blocking | ✅ blocking | ❌ | ➡️ MRTR `createMessage(key, request)` |
 | Roots (`ctx.roots`, roots-change consumer bean) | ✅ | ✅ | ❌ | ➡️ MRTR `listRoots(key)`; no change consumer |
-| Logging to client (`ctx.log/info/...`) | ✅ | ✅ | ❌ | ❌ removed from the protocol (log server-side) |
+| Logging to client (`ctx.log/info/...`) | ✅ | ✅ | ❌ | ⚠️ deprecated in the spec, still available per request (`_meta.logLevel` → `notifications/message` on the request stream); not yet exposed by `McpModernSyncRequestContext`, use `ctx.notify("notifications/message", params)` meanwhile |
 | `ctx.ping()` | ✅ | ✅ | ❌ | ❌ removed |
 | Progress | ✅ | ✅ | ⚠️ token only, no notifications | ✅ `McpModernSyncRequestContext.progress(...)`, streamed |
 | List-changed notifications | ✅ per session, `*-change-notification` props | ✅ per session | ❌ | ✅ via `subscriptions/listen` + `McpChangeFeed`; `InMemorySync*Repository.add/remove` broadcast |
@@ -72,7 +72,7 @@ Effort per dimension and path. **None**: no change. **Low**: property or import 
 | `McpMeta` / `@McpProgressToken` / `McpTransportContext` | None | None | None |
 | Methods with `McpSyncRequestContext` using only `progress` | Low (rename type) | Low | n/a (already skipped on STATELESS) |
 | Methods using `elicit` / `sample` / `roots` | **Medium** per method (MRTR rewrite) | **Medium** | None (not possible before) |
-| Methods using `log` / `ping` | Low (delete calls, use a logger) | Low | n/a |
+| Methods using `log` / `ping` | Low (`ping` has no equivalent; logging becomes per-request and opt-in by the client) | Low | n/a |
 | Methods with `McpSyncServerExchange` | **Medium** (replace with `McpRequestContext`; session id and client info come from `McpModernSyncRequestContext`) | **Medium** | n/a |
 | `ToolCallback` / `ToolCallbackProvider` beans | None | None | None |
 | Programmatic `List<Sync*Specification>` beans | **Medium** (new record types, new handler signature) | **Medium** | **Medium** (smaller: handler already session-free) |
@@ -156,9 +156,9 @@ CallToolOutcome book(McpModernSyncRequestContext ctx, @McpToolParam int guests) 
 
 Sampling and roots follow the same shape with `createMessage(key, CreateMessageRequest)` and `listRoots(key)`. Anything the handler needs on the retry goes into `requestState`; the client cannot tamper with it. Resources and prompts return `ReadResourceOutcome` / `GetPromptOutcome` the same way.
 
-### 5.3 Logging and ping: remove
+### 5.3 Logging and ping
 
-`ctx.info(...)`, `ctx.log(...)`, `ctx.ping()` have no protocol equivalent. Replace with a server-side logger. If the client needs to see progress text, use `ctx.progress(progress, total, message)`.
+`ctx.ping()` has no protocol equivalent; delete it. Logging is deprecated but still part of the revision: a client that wants messages sets `_meta.logLevel` on the request, and the server may answer with `notifications/message` frames on that request's stream. Until the modern context gains a `log` API, keep a server-side logger, or send the frame yourself with `ctx.notify("notifications/message", new LoggingMessageParams(level, logger, data))` only when `ctx.requestMeta()` contains `io.modelcontextprotocol/logLevel`. For user-visible progress text use `ctx.progress(progress, total, message)`.
 
 ### 5.4 `McpSyncServerExchange` → `McpRequestContext` / `McpModernSyncRequestContext`
 
@@ -168,7 +168,7 @@ Sampling and roots follow the same shape with `createMessage(key, CreateMessageR
 | `exchange.getClientCapabilities()` / `getClientInfo()` | `ctx.clientCapabilities()` / `ctx.clientInfo()` (per request, from `_meta`) |
 | `exchange.sessionId()` | none; derive identity from the transport context (headers, principal) |
 | `createMessage`, `createElicitation`, `listRoots` | MRTR (§5.2) |
-| `loggingNotification`, `ping` | removed |
+| `loggingNotification`, `ping` | `ping` removed; logging per request via `_meta.logLevel` (see §5.3) |
 | `progressNotification` | `ctx.progress(...)` |
 
 ### 5.5 Runtime changes: `McpSyncServer` → repositories
@@ -252,7 +252,7 @@ The protocol property holds one value, so an application serves exactly one prot
 
 - [ ] `type=SYNC` (ASYNC not supported on MODERN)
 - [ ] No method declares `McpSyncRequestContext` or `McpSyncServerExchange`, or each has an MRTR rewrite
-- [ ] No `ctx.log/info/warn/error/ping` calls remain
+- [ ] No `ctx.ping()` calls remain; `ctx.log/info/warn/error` calls replaced (server-side logger or per-request `notifications/message`)
 - [ ] Programmatic `McpServerFeatures.*` / `McpStatelessServerFeatures.*` beans converted to `org.springframework.ai.mcp.modern.Sync*Specification`
 - [ ] `McpSyncServerCustomizer` → `McpModernServerCustomizer`
 - [ ] Runtime `McpSyncServer.add*/remove*/notify*` → repository calls

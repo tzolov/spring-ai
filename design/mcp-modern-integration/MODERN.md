@@ -1,6 +1,6 @@
 # Spring AI integration for the MCP 2026-07-28 ("modern") server
 
-This document describes how Spring AI exposes `@McpTool`, `@McpResource`, `@McpPrompt`, `@McpComplete` methods and `ToolCallback` beans through the MCP Java SDK's `io.modelcontextprotocol.modern` server, selected with `spring.ai.mcp.server.protocol=MODERN`. Status, backlog and decision log live in [MODERN-INTEGRATION-PLAN.md](MODERN-INTEGRATION-PLAN.md). Migration guidance for existing servers is in [MODERN-MIGRATION-PATHS.md](MODERN-MIGRATION-PATHS.md).
+This document describes how Spring AI exposes `@McpTool`, `@McpResource`, `@McpPrompt`, `@McpComplete` methods and `ToolCallback` beans through the MCP Java SDK's `io.modelcontextprotocol.modern` server, selected with `spring.ai.mcp.server.protocol=MODERN`. Status, backlog and decision log live in [MODERN-INTEGRATION-PLAN.md](MODERN-INTEGRATION-PLAN.md). Migration guidance for existing servers is in [MODERN-MIGRATION-PATHS.md](MODERN-MIGRATION-PATHS.md); the annotation gap analysis against the 2026-07-28 revision is in [ANNOTATIONS-GAP-ANALYSIS.md](ANNOTATIONS-GAP-ANALYSIS.md).
 
 The diagrams are Mermaid and render on GitHub and in most IDEs.
 
@@ -12,7 +12,7 @@ The diagrams are Mermaid and render on GitHub and in most IDEs.
 | HTTP verbs | POST, GET (SSE), DELETE | POST only. A handler that emits progress answers with a short-lived `text/event-stream` |
 | Server-initiated input | `ctx.elicit(...)`, `ctx.sample(...)`, `ctx.roots()` over the session | Multi round-trip request (MRTR): the handler returns `InputRequiredResult`; the client retries with `inputResponses` and the server-sealed `requestState` |
 | Notifications | Per-session | `subscriptions/listen` stream backed by `McpChangeFeed` |
-| Logging, ping | Supported | Removed from the protocol |
+| Logging, ping | `logging/setLevel` + `notifications/message`, `ping` | `ping` removed. Logging deprecated but live: the client sets `_meta.logLevel` per request and the server may send `notifications/message` on that request's stream before the result (not yet surfaced by `McpModernSyncRequestContext`, see `ANNOTATIONS-GAP-ANALYSIS.md`) |
 | Cache hints | None | `ttlMs` / `cacheScope` on `server/discover`, list results and `ReadResourceResult` |
 
 Spring AI keeps one programming model across all three protocols. A method keeps its legacy `McpSchema` parameter and return types, and the modern path converts them at the boundary. The conversion is a floor, not a ceiling: each primitive also accepts the modern request, context and `*Outcome` types directly, and those pass through untouched.

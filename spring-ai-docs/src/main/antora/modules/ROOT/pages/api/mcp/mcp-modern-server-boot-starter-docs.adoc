@@ -300,7 +300,7 @@ void addLater() {
 
 Compared to the session-based servers:
 
-* `ctx.elicit(...)`, `ctx.sample(...)`, `ctx.roots()`, `ctx.log(...)` and `ctx.ping()` have no equivalent. Elicitation, sampling and roots are multi round-trip requests; logging is gone from the protocol.
+* `ctx.elicit(...)`, `ctx.sample(...)`, `ctx.roots()` and `ctx.ping()` have no direct equivalent. Elicitation, sampling and roots are multi round-trip requests; `ping` is gone. Logging is deprecated and per request: the client opts in with `_meta.logLevel` and the server may send `notifications/message` on that request's stream, which the modern context does not expose yet.
 * Progress requires a streaming response, which the modern context parameter enables automatically.
 * Clients must send the `Mcp-Method`, `MCP-Protocol-Version` and, for `tools/call`, `prompts/get` and `resources/read`, the `Mcp-Name` header consistent with the body. Requests that disagree are rejected with JSON-RPC error `-32020`.
 * `server/discover` replaces `initialize`; its caching hints and the list caching hints are controlled by the properties above.

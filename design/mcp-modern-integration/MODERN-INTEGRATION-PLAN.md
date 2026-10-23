@@ -4,7 +4,7 @@ Tracking document for the integration of the MCP Java SDK's `io.modelcontextprot
 
 | | |
 |---|---|
-| Status date | 2026-10-22 |
+| Status date | 2026-10-23 |
 | Branch | `main`, uncommitted working tree (53 changed or new paths) |
 | SDK | `mcp.sdk.version` = `2.2.0-SNAPSHOT`, built locally from `java-sdk` |
 | Activation | `spring.ai.mcp.server.protocol=MODERN` (`type=SYNC` only) |
@@ -78,6 +78,7 @@ Delivered 2026-10-21/22. Design in MODERN.md §2–§5.
 | `MODERN-MIGRATION-PATHS.md` (SSE/STREAMABLE/STATELESS → MODERN matrices, property mapping, recipes, checklist) | ✅ added 2026-10-22 |
 | `WEBFLUX-MODERN-TRANSPORT-COMPARISON.md` (review of Dariusz's WebFlux transport vs. the original one; adoption decision) | ✅ added 2026-10-22, kept local (git-ignored) |
 | `SDK-TRANSPORT-PROPOSALS.md` (ten proposed SDK changes that would let the WebMvc/WebFlux transports shed their duplicated protocol code) | ✅ added 2026-10-22 |
+| `ANNOTATIONS-GAP-ANALYSIS.md` (2026-07-28 features vs. the server annotations: proposals, handling changes, dropped items) | ✅ added 2026-10-23 |
 | `mcp-modern-server-boot-starter-docs.adoc` + nav entry | ✅ |
 | `@McpResource` attribute table in `mcp-annotations-server.adoc` | ✅ |
 | Unit/IT coverage: `ModernAnnotationProvidersTests` (17), `InMemoryRepositoriesTests`, `AbstractSyncRepositoriesTests` (5), `McpSchemaConverterTests`, `McpModernToolUtilsTests`, `McpServerModernAutoConfigurationIT` (12), WebMvc/WebFlux transport ITs and auto-configuration ITs | ✅ |
@@ -109,10 +110,13 @@ Ordered by recommended priority.
 | # | Item | Status | Rationale / plan |
 |---|---|---|---|
 | 1 | **ASYNC API type** (`type=ASYNC` with `protocol=MODERN`) | ⏳ | async callbacks and providers; SDK `SyncAdapters` already bridges sync repositories, so repositories need no async twin initially |
-| 2 | **Resource subscribe flag on `@McpResource`** | ⏳ | per-resource `subscribe` capability advertisement; today only the global `resource-subscribe` property |
+| 2 | ~~Resource subscribe flag on `@McpResource`~~ | ❌ dropped 2026-10-23 | the 2026-07-28 revision has no per-resource opt-in: `resources.subscribe` is server-wide and means the `subscriptions/listen` `resourceSubscriptions` filter is supported (see `ANNOTATIONS-GAP-ANALYSIS.md` §2.8) |
 | 3 | **Mapper-aware converter plumbing** | ⏳ | `McpSchemaConverter` and `DefaultMcpModernSyncRequestContext.inputResponse` use `McpJsonDefaults.getMapper()`. Plan: optional `McpJsonMapper` on the four modern callback builders, overloads of `SyncMcpAnnotationProviders.modern*(beans, mapper)`, pass the server's `JacksonMcpJsonMapper` from the factory auto-configuration. Avoid a static setter |
 | 4 | **De-duplicate tool metadata derivation** | ⏳ | `SyncModernMcpToolProvider.toSpecification` repeats ~40 lines of `SyncMcpToolProvider`; move shared logic into `AbstractMcpToolProvider` |
-| 5 | **MRTR helper DSL** | ⏳ blocked | wait for the SDK 2.2.0 final API; a Spring-only DSL over `InputResponses`/`RequestStateCodec` risks being stranded |
+| 5 | **Declarative MRTR** (`@McpElicit`, `@McpSample`, `@McpRoots`, `@McpInputResponse`, `@McpRequestState`) | ⏳ | design in `ANNOTATIONS-GAP-ANALYSIS.md` §2.1; wait for the SDK 2.2.0 final API before implementing; elicitation first, sampling/roots are deprecated in the spec |
+| 5a | **Spec compliance on the modern callbacks** | ⏳ | retry results must carry `ttlMs = 0`; raise `-32021` when an `InputRequiredResult` needs an undeclared client capability (gap analysis §3) |
+| 5b | **Per-request logging on `McpModernSyncRequestContext`** | ⏳ | `logLevel()`, `logEnabled()`, `log*()` gated by `_meta.logLevel`, emitting `notifications/message` on the request stream (gap analysis §2.4) |
+| 5c | **Definition attributes** | ⏳ | `icons` on `@McpTool`/`@McpResource`/`@McpPrompt`, `@McpArg.title`, `@McpResource.size`, `@McpToolParam.header` (gap analysis §2.5, §2.6) |
 | 6 | **SDK extraction** | ⏳ | see `SDK-TRANSPORT-PROPOSALS.md` for the transport side; propose upstream: `InMemorySync*Repository` + abstract bases + `RepositoryOptions`, `McpSchemaConverter`, `ModernTransportSupport`, WebMvc/WebFlux transports. Shapes already mirror SDK naming so Spring can delegate afterwards |
 | 7 | **Release pin** | ⏳ blocked | replace `2.2.0-SNAPSHOT` once the SDK releases |
 | 8 | **Upstream fixes outside this branch** | ⏳ | (0) coordinate with Dariusz on landing `WebFluxMcpTransport` upstream (package/class names, the 415 check and `no-transform` added here); (a) `StatelessServerSpecificationFactoryAutoConfiguration` wrongly carries `ToolCallbackConverterCondition`; (b) `ToolCallbackConverterCondition` is duplicated between the legacy and stateless converter auto-configurations; (c) `NonStatelessServerCondition` is misnamed now that it also excludes MODERN |
