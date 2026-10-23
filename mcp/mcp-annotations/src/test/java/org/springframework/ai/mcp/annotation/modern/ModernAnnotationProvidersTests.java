@@ -314,6 +314,49 @@ class ModernAnnotationProvidersTests {
 
 	@Test
 	@SuppressWarnings("unchecked")
+	void logMessagesFollowTheRequestedLogLevel() {
+		McpServer server = McpServer.builder()
+			.serverInfo(Implementation.builder("test", "1").build())
+			.feature(ToolsFeature.ofSync(InMemorySyncToolRepository.builder()
+				.tools(SyncMcpAnnotationProviders.modernToolSpecifications(List.of(new LoggingTools())))
+				.build()))
+			.build();
+
+		// The client asks for info and above: debug is filtered, info goes out first.
+		Map<String, Object> params = params("name", "logs", "arguments", Map.of());
+		((Map<String, Object>) params.get("_meta")).put(MetaKeys.LOG_LEVEL, "info");
+		List<JSONRPCMessage> messages = ((McpTransportResponse.Streaming) send(server, McpSchema.METHOD_TOOLS_CALL,
+				params))
+			.messages()
+			.collectList()
+			.block();
+		List<JSONRPCNotification> logs = messages.stream()
+			.filter(JSONRPCNotification.class::isInstance)
+			.map(JSONRPCNotification.class::cast)
+			.filter(n -> McpSchema.METHOD_NOTIFICATION_MESSAGE.equals(n.method()))
+			.toList();
+		assertThat(logs).hasSize(1);
+		Map<String, Object> logParams = McpJsonDefaults.getMapper().convertValue(logs.get(0).params(), Map.class);
+		assertThat(logParams.get("level")).isEqualTo("info");
+		assertThat(logParams.get("data")).isEqualTo("hello");
+		assertThat(firstText((Map<String, Object>) ((JSONRPCResponse) messages.get(messages.size() - 1)).result()))
+			.isEqualTo("INFO");
+
+		// No log level requested: nothing is sent, whatever the handler logs.
+		messages = ((McpTransportResponse.Streaming) send(server, McpSchema.METHOD_TOOLS_CALL,
+				params("name", "logs", "arguments", Map.of())))
+			.messages()
+			.collectList()
+			.block();
+		assertThat(messages.stream()
+			.filter(JSONRPCNotification.class::isInstance)
+			.map(m -> ((JSONRPCNotification) m).method())).doesNotContain(McpSchema.METHOD_NOTIFICATION_MESSAGE);
+		assertThat(firstText((Map<String, Object>) ((JSONRPCResponse) messages.get(messages.size() - 1)).result()))
+			.isEqualTo("none");
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
 	void promptListOmitsInjectedModernParameters() {
 		Map<String, Object> list = result(send(server(), McpSchema.METHOD_PROMPTS_LIST, params()));
 		List<Map<String, Object>> prompts = (List<Map<String, Object>>) list.get("prompts");
@@ -598,6 +641,17 @@ class ModernAnnotationProvidersTests {
 		@McpResource(uri = "test://broken", name = "broken", description = "broken")
 		String readBroken() {
 			throw new IllegalStateException("broken");
+		}
+
+	}
+
+	static class LoggingTools {
+
+		@McpTool(name = "logs", description = "Logs at two levels")
+		String logs(McpModernSyncRequestContext ctx) {
+			ctx.debug("fine");
+			ctx.info("hello");
+			return ctx.logLevel().map(Enum::name).orElse("none");
 		}
 
 	}

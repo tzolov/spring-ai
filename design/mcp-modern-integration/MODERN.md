@@ -12,7 +12,7 @@ The diagrams are Mermaid and render on GitHub and in most IDEs.
 | HTTP verbs | POST, GET (SSE), DELETE | POST only. A handler that emits progress answers with a short-lived `text/event-stream` |
 | Server-initiated input | `ctx.elicit(...)`, `ctx.sample(...)`, `ctx.roots()` over the session | Multi round-trip request (MRTR): the handler returns `InputRequiredResult`; the client retries with `inputResponses` and the server-sealed `requestState` |
 | Notifications | Per-session | `subscriptions/listen` stream backed by `McpChangeFeed` |
-| Logging, ping | `logging/setLevel` + `notifications/message`, `ping` | `ping` removed. Logging deprecated but live: the client sets `_meta.logLevel` per request and the server may send `notifications/message` on that request's stream before the result (not yet surfaced by `McpModernSyncRequestContext`, see `ANNOTATIONS-GAP-ANALYSIS.md`) |
+| Logging, ping | `logging/setLevel` + `notifications/message`, `ping` | `ping` removed. Logging deprecated but live: the client sets `_meta.logLevel` per request and the server may send `notifications/message` on that request's stream before the result (`McpModernSyncRequestContext.log*`, silent unless the client set the level) |
 | Cache hints | None | `ttlMs` / `cacheScope` on `server/discover`, list results and `ReadResourceResult` |
 
 Spring AI keeps one programming model across all three protocols. A method keeps its legacy `McpSchema` parameter and return types, and the modern path converts them at the boundary. The conversion is a floor, not a ceiling: each primitive also accepts the modern request, context and `*Outcome` types directly, and those pass through untouched.

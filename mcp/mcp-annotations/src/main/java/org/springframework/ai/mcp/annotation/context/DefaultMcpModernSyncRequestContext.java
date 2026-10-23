@@ -23,8 +23,12 @@ import java.util.function.Consumer;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.modern.McpSchema;
 import io.modelcontextprotocol.modern.McpSchema.ClientCapabilities;
 import io.modelcontextprotocol.modern.McpSchema.Implementation;
+import io.modelcontextprotocol.modern.McpSchema.LoggingLevel;
+import io.modelcontextprotocol.modern.McpSchema.LoggingMessageParams;
+import io.modelcontextprotocol.modern.McpSchema.MetaKeys;
 import io.modelcontextprotocol.modern.server.InputResponses;
 import io.modelcontextprotocol.modern.server.McpRequestContext;
 import io.modelcontextprotocol.modern.server.McpSyncNotifier;
@@ -154,6 +158,41 @@ public final class DefaultMcpModernSyncRequestContext implements McpModernSyncRe
 		DefaultProgressSpec spec = new DefaultProgressSpec();
 		progressSpec.accept(spec);
 		progress(spec.progress, spec.total, spec.message);
+	}
+
+	@Override
+	public Optional<LoggingLevel> logLevel() {
+		Object raw = this.context.meta().get(MetaKeys.LOG_LEVEL);
+		if (raw instanceof LoggingLevel level) {
+			return Optional.of(level);
+		}
+		return raw instanceof String name ? Optional.ofNullable(LoggingLevel.fromValue(name)) : Optional.empty();
+	}
+
+	@Override
+	public boolean logEnabled(LoggingLevel level) {
+		Assert.notNull(level, "level must not be null");
+		return this.notifier != null && logLevel().filter(threshold -> level.level() >= threshold.level()).isPresent();
+	}
+
+	@Override
+	public void log(LoggingLevel level, @Nullable String logger, Object data) {
+		Assert.notNull(data, "data must not be null");
+		if (!logEnabled(level)) {
+			if (DefaultMcpModernSyncRequestContext.logger.isDebugEnabled()) {
+				DefaultMcpModernSyncRequestContext.logger.debug("Log message dropped: " + dropReason(level));
+			}
+			return;
+		}
+		notify(McpSchema.METHOD_NOTIFICATION_MESSAGE, new LoggingMessageParams(level, logger, data));
+	}
+
+	private String dropReason(LoggingLevel level) {
+		if (this.notifier == null) {
+			return "the call is not served as a streaming response";
+		}
+		return logLevel().map(threshold -> level + " is below the requested level " + threshold)
+			.orElse("the client did not request log messages for this request");
 	}
 
 	@Override

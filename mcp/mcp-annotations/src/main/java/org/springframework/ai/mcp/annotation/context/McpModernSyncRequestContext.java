@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.modern.McpSchema.ClientCapabilities;
 import io.modelcontextprotocol.modern.McpSchema.Implementation;
+import io.modelcontextprotocol.modern.McpSchema.LoggingLevel;
 import io.modelcontextprotocol.modern.server.McpRequestContext;
 import org.jspecify.annotations.Nullable;
 
@@ -31,8 +32,8 @@ import org.springframework.ai.mcp.annotation.context.McpRequestContextTypes.Prog
 /**
  * The request context injected into annotated methods served by a 2026-07-28 ("modern")
  * MCP server. The modern protocol is stateless: there is no session and no in-call
- * elicitation, sampling, roots or logging. Instead, server-initiated input is requested
- * with an {@code InputRequiredResult} and arrives on the retried call through
+ * elicitation, sampling or roots. Instead, server-initiated input is requested with an
+ * {@code InputRequiredResult} and arrives on the retried call through
  * {@link #inputResponses()}.
  * <p>
  * Progress notifications are delivered on the response stream. A method that declares
@@ -109,5 +110,67 @@ public interface McpModernSyncRequestContext {
 	 * @param params the notification params
 	 */
 	void notify(String method, Object params);
+
+	/**
+	 * The log level the client asked for on this request through
+	 * {@code _meta["io.modelcontextprotocol/logLevel"]}, if any. Logging is deprecated in
+	 * the 2026-07-28 revision but still available: a server may send
+	 * {@code notifications/message} on the request's own stream, and only when the client
+	 * asked for it.
+	 * @since 2.2.0
+	 */
+	Optional<LoggingLevel> logLevel();
+
+	/**
+	 * Whether a message at {@code level} would reach the client: the client asked for
+	 * logs on this request, the level meets its threshold, and the response is a stream.
+	 * @since 2.2.0
+	 */
+	boolean logEnabled(LoggingLevel level);
+
+	/**
+	 * Sends a {@code notifications/message} on this request's stream when
+	 * {@link #logEnabled} holds; otherwise the message is dropped silently.
+	 * @param level the severity
+	 * @param logger an optional logger name
+	 * @param data the message, or any JSON-serializable payload
+	 * @since 2.2.0
+	 */
+	void log(LoggingLevel level, @Nullable String logger, Object data);
+
+	/**
+	 * @since 2.2.0
+	 */
+	default void log(LoggingLevel level, Object data) {
+		log(level, null, data);
+	}
+
+	/**
+	 * @since 2.2.0
+	 */
+	default void debug(String message) {
+		log(LoggingLevel.DEBUG, message);
+	}
+
+	/**
+	 * @since 2.2.0
+	 */
+	default void info(String message) {
+		log(LoggingLevel.INFO, message);
+	}
+
+	/**
+	 * @since 2.2.0
+	 */
+	default void warn(String message) {
+		log(LoggingLevel.WARNING, message);
+	}
+
+	/**
+	 * @since 2.2.0
+	 */
+	default void error(String message) {
+		log(LoggingLevel.ERROR, message);
+	}
 
 }
