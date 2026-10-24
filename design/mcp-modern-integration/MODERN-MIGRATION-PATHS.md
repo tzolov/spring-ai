@@ -1,8 +1,10 @@
 # Migrating a Spring AI MCP server to the 2026-07-28 ("modern") protocol
 
-Audience: application developers running a Spring AI MCP **server** today (Spring Boot, `spring-ai-starter-mcp-server-webmvc` or `-webflux`) who want to switch to `spring.ai.mcp.server.protocol=MODERN`. Scope: server side, `type=SYNC` only (the modern integration does not support `ASYNC` yet). Design background is in [MODERN.md](MODERN.md); status and backlog in [MODERN-INTEGRATION-PLAN.md](MODERN-INTEGRATION-PLAN.md).
+This guide is for application developers who run a Spring AI MCP **server** today (Spring Boot with `spring-ai-starter-mcp-server-webmvc` or `spring-ai-starter-mcp-server-webflux`) and want to switch to `spring.ai.mcp.server.protocol=MODERN`.
+It covers the server side and the `SYNC` API type only; the modern integration does not support `ASYNC` yet.
+The design is described in [MODERN.md](MODERN.md), and the status and backlog in [MODERN-INTEGRATION-PLAN.md](MODERN-INTEGRATION-PLAN.md).
 
-Three starting points are covered, selected today by `spring.ai.mcp.server.protocol`:
+The guide covers three starting points, selected today by the `spring.ai.mcp.server.protocol` property:
 
 | Start | Property value | Transport | Session |
 |---|---|---|---|
@@ -20,13 +22,18 @@ Three starting points are covered, selected today by `spring.ai.mcp.server.proto
 | **STREAMABLE → MODERN** | **Low to Medium** | Low if methods only use annotations and `ToolCallback`s. Medium if they call `ctx.elicit`, `ctx.sample`, `ctx.roots`, `ctx.log` or use `McpSyncServerExchange`: those become multi round-trip requests (MRTR) and need a rewrite per method. |
 | **SSE → MODERN** | **Medium** | Everything in the STREAMABLE row plus new endpoints (two paths become one POST) and client reconfiguration. |
 
-Nothing changes for: `@McpTool`/`@McpResource`/`@McpPrompt`/`@McpComplete` methods that use only plain arguments, `McpMeta`, `@McpProgressToken` or `McpTransportContext`; `ToolCallback` and `ToolCallbackProvider` beans; `spring.ai.mcp.server.name/version/instructions/capabilities.*/tool-callback-converter/tool-response-mime-type/expose-mcp-client-tools`; the annotation scanner.
+The following parts of your application do not change:
+
+* `@McpTool`, `@McpResource`, `@McpPrompt` and `@McpComplete` methods that use only plain arguments, `McpMeta`, `@McpProgressToken` or `McpTransportContext`
+* `ToolCallback` and `ToolCallbackProvider` beans
+* The `spring.ai.mcp.server.name`, `version`, `instructions`, `capabilities.*`, `tool-callback-converter`, `tool-response-mime-type` and `expose-mcp-client-tools` properties
+* The annotation scanner
 
 ---
 
 ## 2. Capability matrix
 
-What each server offers. ✅ supported · ⚠️ partial / different · ❌ not available · ➡️ replaced by
+The following table compares what each server type offers. ✅ supported · ⚠️ partial / different · ❌ not available · ➡️ replaced by
 
 | Aspect | SSE | STREAMABLE | STATELESS | MODERN |
 |---|---|---|---|---|
@@ -50,7 +57,7 @@ What each server offers. ✅ supported · ⚠️ partial / different · ❌ not 
 | Runtime add/remove | `McpSyncServer.addTool/removeTool/...` | same | ❌ | `InMemorySync*Repository.add/remove` (inject the repository bean) |
 | Programmatic specifications | `McpServerFeatures.Sync*Specification` (`McpSyncServerExchange` handler) | same | `McpStatelessServerFeatures.Sync*Specification` (`McpTransportContext` handler) | `org.springframework.ai.mcp.modern.Sync*Specification` (`McpRequestContext` + modern request → `McpSyncResponse<*Outcome>`) |
 | Server customizer bean | `McpSyncServerCustomizer` | same | `McpStatelessSyncServerCustomizer` | `McpModernServerCustomizer` (`McpServer.Builder`) |
-| Transport context extraction | SDK extractor on the transport provider | same | same | `McpTransportContextExtractor<ServerRequest>` bean |
+| Transport context extraction | SDK extractor on the transport provider | same | same | request headers by default (`McpTransportContexts.header(ctx, name)`); `McpTransportContextExtractor<ServerRequest>` bean to replace |
 | Origin/Host validation | ⚠️ transport-specific | ⚠️ | ⚠️ | ✅ `ServerHttpHeaderValidator` bean on every POST |
 | Request body limit | ❌ container default | ❌ | ❌ | ✅ `modern.max-request-size` (default 16MB) |
 | Multi-instance deployment | session affinity needed | session affinity needed | ✅ free | ✅ free, **but** set `modern.request-state-secret` on all instances when using MRTR |
@@ -61,7 +68,7 @@ What each server offers. ✅ supported · ⚠️ partial / different · ❌ not 
 
 ## 3. Migration effort matrix
 
-Effort per dimension and path. **None**: no change. **Low**: property or import change, mechanical. **Medium**: per-method rewrite with a clear recipe. **High**: redesign.
+The following table estimates the effort per dimension and migration path. **None**: no change. **Low**: a property or import change, mechanical. **Medium**: a per-method rewrite with a clear recipe. **High**: a redesign.
 
 | Dimension | SSE → MODERN | STREAMABLE → MODERN | STATELESS → MODERN |
 |---|---|---|---|
@@ -87,6 +94,8 @@ Effort per dimension and path. **None**: no change. **Low**: property or import 
 ---
 
 ## 4. Property mapping
+
+The full list of modern properties with defaults is [MODERN.md](MODERN.md) §6; this table maps the legacy names onto it.
 
 | Legacy property | Modern equivalent | Note |
 |---|---|---|
@@ -154,11 +163,17 @@ CallToolOutcome book(McpModernSyncRequestContext ctx, @McpToolParam int guests) 
 }
 ```
 
-Sampling and roots follow the same shape with `createMessage(key, CreateMessageRequest)` and `listRoots(key)`. Anything the handler needs on the retry goes into `requestState`; the client cannot tamper with it. Resources and prompts return `ReadResourceOutcome` / `GetPromptOutcome` the same way.
+Sampling and roots follow the same pattern with `createMessage(key, CreateMessageRequest)` and `listRoots(key)`.
+Anything the handler needs on the retry goes into `requestState`, which the client cannot tamper with.
+Resources and prompts return `ReadResourceOutcome` and `GetPromptOutcome` in the same way.
 
 ### 5.3 Logging and ping
 
-`ctx.ping()` has no protocol equivalent; delete it. Logging is deprecated but still part of the revision, and it is opt-in by the client: a request that carries `_meta.logLevel` may receive `notifications/message` frames on its own stream. `McpModernSyncRequestContext.info(...)`, `debug`, `warn`, `error` and `log(level, logger, data)` do exactly that and are silent otherwise, so the legacy `ctx.info(...)` calls survive a rename of the context type. Check `ctx.logEnabled(level)` before building an expensive message. For user-visible progress text use `ctx.progress(progress, total, message)`.
+`ctx.ping()` has no protocol equivalent, so remove it.
+Logging is deprecated but still part of the revision, and the client opts in per request: a request that carries `_meta.logLevel` may receive `notifications/message` frames on its own response stream.
+`McpModernSyncRequestContext.info(...)`, `debug`, `warn`, `error` and `log(level, logger, data)` do exactly that and are silent otherwise, so your legacy `ctx.info(...)` calls keep working after you rename the context type.
+Check `ctx.logEnabled(level)` before building an expensive message.
+For user-visible progress text, use `ctx.progress(progress, total, message)`.
 
 ### 5.4 `McpSyncServerExchange` → `McpRequestContext` / `McpModernSyncRequestContext`
 
@@ -184,7 +199,9 @@ tools.add(new SyncToolSpecification(tool, (ctx, request) -> McpSyncResponse.resu
 // list_changed is broadcast to subscriptions/listen clients automatically
 ```
 
-Resources: `InMemorySyncResourceRepository.add/remove/resourceUpdated(uri)`. For catalogues that are dynamic or per caller, extend `AbstractSync{Tool,Resource,Prompt}Repository` instead and declare it as a bean; it replaces the in-memory one.
+For resources, use `InMemorySyncResourceRepository.add`, `remove` and `resourceUpdated(uri)`.
+To show each caller a different subset, define a `McpVisibilityFilter` bean.
+For catalogues that are not a fixed list, extend `AbstractSync{Tool,Resource,Prompt}Repository` and declare the subclass as a bean; it replaces the in-memory repository for that primitive.
 
 ### 5.6 Programmatic specifications
 
@@ -198,21 +215,23 @@ new org.springframework.ai.mcp.modern.SyncToolSpecification(modernTool,
         (McpRequestContext ctx, CallToolRequest request) -> McpSyncResponse.result(modernResult));
 ```
 
-`McpSchemaConverter.toModern(...)` converts legacy `Tool`/`CallToolResult` records if you want to keep building them with the legacy types.
+If you prefer to keep building the legacy `Tool` and `CallToolResult` records, `McpSchemaConverter.toModern(...)` converts them to the modern types.
 
 ### 5.7 Customizer and transport hooks
+
+The complete list of extension beans is [MODERN.md](MODERN.md) §7.
 
 | Before | After |
 |---|---|
 | `McpSyncServerCustomizer` / `McpStatelessSyncServerCustomizer` | `McpModernServerCustomizer` → `customize(McpServer.Builder)` |
-| Transport provider bean (`WebMvcStreamableServerTransportProvider`, ...) | none; the transport is built from properties. Hooks: `McpTransportContextExtractor<ServerRequest>` and `ServerHttpHeaderValidator` beans |
+| Transport provider bean (`WebMvcStreamableServerTransportProvider`, ...) | none; the transport is built from properties. Hooks: `McpTransportContextExtractor<ServerRequest>` (default: request headers in the context) and `ServerHttpHeaderValidator` beans |
 | `RouterFunction` bean override (`webMvcStreamableServerRouterFunction`, `webMvcStatelessServerRouterFunction`, `webMvcSseServerRouterFunction`) | define a bean named `webMvcModernServerRouterFunction` / `webFluxModernServerRouterFunction`; the auto-configured one backs off |
 
 ---
 
 ## 6. Step-by-step
 
-**Common to all paths**
+The following steps apply to all three paths:
 
 1. Build against the SDK version carrying `io.modelcontextprotocol.modern` (currently `2.2.0-SNAPSHOT`, see the plan). Starters stay the same.
 2. Set `spring.ai.mcp.server.protocol=MODERN`. Start the application: methods with `McpSyncRequestContext`/`McpSyncServerExchange` are **skipped with a warning** naming the method and the replacement type; anything built directly fails fast. Treat every such warning as a work item.
@@ -233,7 +252,10 @@ new org.springframework.ai.mcp.modern.SyncToolSpecification(modernTool,
 
 ## 7. Clients and rollout (server-side view)
 
-The protocol property holds one value, so an application serves exactly one protocol. A modern server only accepts requests whose `_meta.protocolVersion` is in `modern.supported-versions` (default `2026-07-28`) and that carry the modern headers; anything else is answered with JSON-RPC error `-32022 Unsupported protocol version` or `-32020`, never downgraded. Plan the switch as a coordinated cut-over, or run the legacy and the modern server as two deployments behind different paths or hosts until the client fleet is upgraded. Client-side migration is out of scope here.
+The protocol property holds a single value, so an application serves exactly one protocol.
+A modern server accepts only requests whose `_meta.protocolVersion` is listed in `modern.supported-versions` (default `2026-07-28`) and that carry the modern headers; any other request is answered with the JSON-RPC error `-32022 Unsupported protocol version` or `-32020`, and is never downgraded.
+Plan the switch as a coordinated cut-over, or run the legacy and the modern server as two deployments behind different paths or hosts until your client fleet is upgraded.
+Client-side migration is out of scope for this guide.
 
 ---
 
