@@ -229,9 +229,43 @@ Methods that only need the raw fields can declare the modern request type (`Call
 
 Each primitive is served by an SDK repository bean: `McpSyncToolRepository`, `McpSyncResourceRepository`, `McpSyncPromptRepository` and `McpSyncCompletionRepository`. Unless you define a bean of that type yourself, the auto-configuration registers an in-memory repository per primitive (`InMemorySyncToolRepository`, `InMemorySyncResourceRepository`, `InMemorySyncPromptRepository`, `InMemorySyncCompletionRepository`) and the `McpChangeFeed` that backs `subscriptions/listen`. Inject an in-memory repository to add or remove primitives at runtime; the matching list-changed notification is broadcast to listening clients. Call `InMemorySyncResourceRepository.resourceUpdated(uri)` to notify subscribers of a resource change.
 
+==== Visibility Filters
+
+To restrict what each caller sees without writing a repository, define one or more `McpVisibilityFilter` beans.
+The auto-configuration applies them to the in-memory tool, resource and prompt repositories on every path: a hidden primitive is not listed, is not found by name, and a call, read or get for it answers `Unknown tool`, `Unknown resource` or `Unknown prompt` (`-32602`), as for a primitive that does not exist.
+A hidden resource is not served by a resource template that matches its URI either, and `completion/complete` rejects a reference to a hidden prompt or template as unknown.
+Resource subscriptions on `subscriptions/listen` are matched by the SDK without consulting the repository, so a hidden resource's update notifications still reach a client that subscribed to its URI.
+A filtered listing is always `cacheScope: private`.
+Several filter beans combine with AND.
+The filter beans are applied to the in-memory repositories only; a custom repository bean (see below) receives a filter through its constructor.
+
+The filter receives the `McpRequestContext`, whose transport context carries the HTTP request headers by default (see <<Customizing the Server and the Transport>>).
+`McpTransportContexts.header(ctx, name)` reads one case-insensitively.
+
+[source,java]
+----
+@Bean
+McpVisibilityFilter adminOnlyUnlessPublic() {
+    return McpVisibilityFilter.tools((ctx, tool) ->
+        "admin".equals(McpTransportContexts.header(ctx, "x-role"))
+            || (tool.meta() != null && "public".equals(tool.meta().get("visibility"))));
+}
+----
+
+A definition's `_meta` is `null` unless something set it, hence the guard.
+
+`McpVisibilityFilter` has one default method per primitive (`tool`, `resource`, `resourceTemplate`, `prompt`), so a tenant rule written once covers all of them; the static factories `tools`, `resources`, `resourceTemplates` and `prompts` build a single-primitive filter from a lambda.
+The `_meta` of a definition is a convenient place for the attribute a filter reads; `@McpTool(metaProvider = ...)` fills it on annotated tools.
+
 ==== Custom Repositories
 
-To serve a catalogue that is not a fixed list, for example one read from a database or filtered per tenant, extend `AbstractSyncToolRepository`, `AbstractSyncResourceRepository` or `AbstractSyncPromptRepository` instead of implementing the SDK interface from scratch. The base classes provide list paging with opaque cursors, the list cache hints, dispatch to the specification handlers, URI template matching for resources and the change broadcasts. You implement two methods, `lookup(ctx, key)` and `specifications(ctx)` (resources add `templateSpecifications(ctx)`). Both receive the `McpRequestContext`, so the visible set can depend on the caller. Override `listCacheScope(ctx)` to return `PRIVATE` when a listing is personalised. Declaring the subclass as a bean replaces the in-memory repository for that primitive.
+To serve a catalogue that is not a fixed list, for example one read from a database or a file system, extend `AbstractSyncToolRepository`, `AbstractSyncResourceRepository` or `AbstractSyncPromptRepository` instead of implementing the SDK interface from scratch.
+The base classes provide list paging with opaque cursors, the list cache scope, dispatch to the specification handlers, URI template matching for resources, visibility and the change broadcasts.
+You implement two hooks: `definitions(ctx)` returns the plain definitions for listing, and `lookup(ctx, key)` returns the specification, definition plus handler, for dispatch (resources add `templateDefinitions(ctx)` and `lookupTemplate(ctx, uriTemplate)`).
+Pass a `McpVisibilityFilter` to the constructor, or override `visible(ctx, definition)`, to restrict what a caller sees; override `listCacheScope(ctx)` to return `PRIVATE` when a listing is personalised for another reason.
+The list `ttlMs` always comes from `spring.ai.mcp.server.modern.list-ttl`.
+All hooks receive the `McpRequestContext`.
+Declaring the subclass as a bean replaces the in-memory repository for that primitive.
 
 [source,java]
 ----
@@ -240,19 +274,20 @@ public class TenantToolRepository extends AbstractSyncToolRepository {
 
     private final ToolCatalog catalog;
 
-    public TenantToolRepository(ToolCatalog catalog, McpChangeFeed changeFeed) {
-        super(RepositoryOptions.defaults().withChangeBroadcaster(changeFeed).withPageSize(50));
+    public TenantToolRepository(ToolCatalog catalog, McpChangeFeed changeFeed,
+            ObjectProvider<McpVisibilityFilter> filters) {
+        super(changeFeed, 50, McpVisibilityFilter.allOf(filters.orderedStream().toList()));
         this.catalog = catalog;
     }
 
     @Override
-    protected SyncToolSpecification lookup(McpRequestContext ctx, String name) {
-        return catalog.find(tenant(ctx), name);
+    protected List<Tool> definitions(McpRequestContext ctx) {
+        return catalog.toolsOf(tenant(ctx));           // definitions only, no handlers
     }
 
     @Override
-    protected List<SyncToolSpecification> specifications(McpRequestContext ctx) {
-        return catalog.visibleTo(tenant(ctx));
+    protected SyncToolSpecification lookup(McpRequestContext ctx, String name) {
+        return catalog.find(tenant(ctx), name);         // definition + handler, on call
     }
 
     @Override
@@ -261,7 +296,7 @@ public class TenantToolRepository extends AbstractSyncToolRepository {
     }
 
     private String tenant(McpRequestContext ctx) {
-        return (String) ctx.transportContext().get("tenant");
+        return McpTransportContexts.header(ctx, "x-tenant");
     }
 }
 ----
@@ -293,7 +328,8 @@ void addLater() {
 * A `McpModernServerCustomizer` bean receives the SDK `McpServer.Builder` before the server is built. Use it to add extension features or to replace the request state codec.
 * A `RequestStateCodec` bean replaces the HMAC codec configured from the properties.
 * A `ServerHttpHeaderValidator` bean validates `Origin` and `Host` on every request. The SDK's `DefaultServerTransportSecurityValidator` implements it.
-* A `McpTransportContextExtractor<ServerRequest>` bean derives the `McpTransportContext` handlers see from the incoming request.
+* By default the transport stores the HTTP request headers in the `McpTransportContext` handlers see, under `McpTransportContexts.HEADERS`, with lower-cased names and without the `Mcp-*` protocol headers; `Authorization` and `Cookie` are included, so register your own extractor if handlers must not see them.
+A `McpTransportContextExtractor<ServerRequest>` bean replaces that default and derives the context from the incoming request itself.
 * The transports are plain `WebMvcModernServerTransport` and `WebFluxMcpTransport` beans and can be built manually from a `McpRequestManager` when more control is needed.
 
 == Migration Notes

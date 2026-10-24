@@ -21,9 +21,12 @@
  * The modern SDK exposes primitives through repositories rather than specification lists.
  * This package bridges the two styles: the {@code Sync*Specification} records pair a
  * primitive definition with its handler, the {@code AbstractSync*Repository} classes turn
- * a per-request set of specifications into an SDK repository (paging, cache hints,
- * dispatch, template matching, change broadcasts), and the
- * {@code InMemorySync*Repository} classes are their map-backed implementations.
+ * per-request definitions and specifications into an SDK repository (paging, list cache
+ * scope, visibility, dispatch, template matching, change broadcasts), and the
+ * {@code InMemorySync*Repository} classes are their map-backed implementations. A
+ * {@link org.springframework.ai.mcp.modern.McpVisibilityFilter} restricts what each
+ * caller sees, typically from the request headers that
+ * {@link org.springframework.ai.mcp.modern.McpTransportContexts} exposes.
  * {@link org.springframework.ai.mcp.modern.McpSchemaConverter} converts between the
  * legacy and modern schema types, which lets handlers written against the legacy types be
  * exposed on a modern server.

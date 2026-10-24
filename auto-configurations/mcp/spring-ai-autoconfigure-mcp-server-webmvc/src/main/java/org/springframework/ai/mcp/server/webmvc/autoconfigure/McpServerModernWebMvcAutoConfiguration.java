@@ -47,8 +47,9 @@ import org.springframework.web.servlet.function.ServerResponse;
  * stdio is disabled.
  * <p>
  * A {@link ServerHttpHeaderValidator} bean, when present, validates Origin and Host
- * headers; a {@code McpTransportContextExtractor<ServerRequest>} bean, when present,
- * derives the transport context from the request.
+ * headers. A {@code McpTransportContextExtractor<ServerRequest>} bean, when present,
+ * derives the transport context from the request; otherwise
+ * {@link HeaderTransportContextExtractor} exposes the request headers.
  *
  * @author Christian Tzolov
  * @since 2.2.0
@@ -73,7 +74,7 @@ public class McpServerModernWebMvcAutoConfiguration {
 			.keepAliveInterval(modernProperties.effectiveKeepAliveInterval())
 			.maxRequestSize((int) Math.min(Integer.MAX_VALUE, modernProperties.getMaxRequestSize().toBytes()));
 		headerValidator.ifAvailable(builder::httpHeaderValidator);
-		contextExtractor.ifAvailable(builder::contextExtractor);
+		builder.contextExtractor(contextExtractor.getIfAvailable(HeaderTransportContextExtractor::new));
 		return builder.build();
 	}
 

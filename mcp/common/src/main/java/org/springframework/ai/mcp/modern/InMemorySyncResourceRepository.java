@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import io.modelcontextprotocol.modern.McpSchema.CacheScope;
 import io.modelcontextprotocol.modern.McpSchema.Resource;
 import io.modelcontextprotocol.modern.McpSchema.ResourceTemplate;
 import io.modelcontextprotocol.modern.server.McpRequestContext;
@@ -38,7 +37,7 @@ import org.springframework.util.Assert;
  * and templates can be added and removed at runtime; each change is broadcast as
  * {@code notifications/resources/list_changed} when a change broadcaster is configured,
  * and {@link #resourceUpdated(String)} notifies subscribers of a changed resource. Every
- * caller sees every resource.
+ * caller sees every resource unless a {@link McpVisibilityFilter} is set.
  *
  * @author Christian Tzolov
  * @since 2.2.0
@@ -50,7 +49,8 @@ public final class InMemorySyncResourceRepository extends AbstractSyncResourceRe
 	private final Map<String, SyncResourceTemplateSpecification> templates = new ConcurrentSkipListMap<>();
 
 	private InMemorySyncResourceRepository(Builder builder) {
-		super(builder.options, builder.uriTemplateManagerFactory, builder.subscribeSupported);
+		super(builder.changeBroadcaster, builder.pageSize, builder.subscribeSupported, builder.visibility,
+				builder.uriTemplateManagerFactory);
 		builder.resources.forEach(this::put);
 		builder.resourceTemplates.forEach(this::put);
 	}
@@ -124,13 +124,18 @@ public final class InMemorySyncResourceRepository extends AbstractSyncResourceRe
 	}
 
 	@Override
-	protected List<SyncResourceSpecification> specifications(McpRequestContext ctx) {
-		return List.copyOf(this.resources.values());
+	protected @Nullable SyncResourceTemplateSpecification lookupTemplate(McpRequestContext ctx, String uriTemplate) {
+		return this.templates.get(uriTemplate);
 	}
 
 	@Override
-	protected List<SyncResourceTemplateSpecification> templateSpecifications(McpRequestContext ctx) {
-		return List.copyOf(this.templates.values());
+	protected List<Resource> definitions(McpRequestContext ctx) {
+		return resources();
+	}
+
+	@Override
+	protected List<ResourceTemplate> templateDefinitions(McpRequestContext ctx) {
+		return resourceTemplates();
 	}
 
 	private void put(SyncResourceSpecification specification) {
@@ -162,7 +167,11 @@ public final class InMemorySyncResourceRepository extends AbstractSyncResourceRe
 
 		private McpUriTemplateManagerFactory uriTemplateManagerFactory = new DefaultMcpUriTemplateManagerFactory();
 
-		private RepositoryOptions options = RepositoryOptions.defaults();
+		private @Nullable McpChangeBroadcaster changeBroadcaster;
+
+		private @Nullable Integer pageSize;
+
+		private @Nullable McpVisibilityFilter visibility;
 
 		private boolean subscribeSupported;
 
@@ -200,7 +209,16 @@ public final class InMemorySyncResourceRepository extends AbstractSyncResourceRe
 		}
 
 		public Builder changeBroadcaster(@Nullable McpChangeBroadcaster changeBroadcaster) {
-			this.options = this.options.withChangeBroadcaster(changeBroadcaster);
+			this.changeBroadcaster = changeBroadcaster;
+			return this;
+		}
+
+		/**
+		 * Restricts what each caller sees. Unset, every caller sees every resource and
+		 * template.
+		 */
+		public Builder visibility(@Nullable McpVisibilityFilter visibility) {
+			this.visibility = visibility;
 			return this;
 		}
 
@@ -214,12 +232,7 @@ public final class InMemorySyncResourceRepository extends AbstractSyncResourceRe
 		 * {@code resources/templates/list} page. Unset returns everything on one page.
 		 */
 		public Builder pageSize(@Nullable Integer pageSize) {
-			this.options = this.options.withPageSize(pageSize);
-			return this;
-		}
-
-		public Builder cacheHints(@Nullable Long ttlMs, @Nullable CacheScope cacheScope) {
-			this.options = this.options.withCacheHints(ttlMs, cacheScope);
+			this.pageSize = pageSize;
 			return this;
 		}
 

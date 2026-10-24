@@ -43,58 +43,112 @@ import org.springframework.util.Assert;
  */
 public abstract class AbstractSyncPromptRepository implements McpSyncPromptRepository {
 
-	private final RepositoryOptions options;
+	private final @Nullable McpChangeBroadcaster changeBroadcaster;
 
-	protected AbstractSyncPromptRepository(RepositoryOptions options) {
-		Assert.notNull(options, "options must not be null");
-		this.options = options;
+	private final @Nullable Integer pageSize;
+
+	private final @Nullable McpVisibilityFilter visibility;
+
+	/**
+	 * Creates a repository that serves every prompt on one page to every caller and
+	 * broadcasts no changes.
+	 */
+	protected AbstractSyncPromptRepository() {
+		this(null, null, null);
 	}
 
 	/**
-	 * Returns the specification of the named prompt as visible to the caller, or
-	 * {@code null} when there is none.
+	 * @param changeBroadcaster receives {@code prompts/list_changed} broadcasts, or
+	 * {@code null} to broadcast nothing
+	 * @param pageSize the maximum number of prompts per {@code prompts/list} page, or
+	 * {@code null} to serve every prompt on one page
+	 */
+	protected AbstractSyncPromptRepository(@Nullable McpChangeBroadcaster changeBroadcaster,
+			@Nullable Integer pageSize) {
+		this(changeBroadcaster, pageSize, null);
+	}
+
+	/**
+	 * @param visibility restricts what each caller sees, or {@code null} to show every
+	 * prompt to every caller; see {@link #visible(McpRequestContext, Prompt)}
+	 */
+	protected AbstractSyncPromptRepository(@Nullable McpChangeBroadcaster changeBroadcaster, @Nullable Integer pageSize,
+			@Nullable McpVisibilityFilter visibility) {
+		Assert.isTrue(pageSize == null || pageSize > 0, "pageSize must be positive");
+		this.changeBroadcaster = changeBroadcaster;
+		this.pageSize = pageSize;
+		this.visibility = visibility;
+	}
+
+	/**
+	 * Returns every prompt definition the repository holds. Order is irrelevant; pages
+	 * are sorted by prompt name. Visibility is applied by the caller through
+	 * {@link #visible(McpRequestContext, Prompt)}.
+	 */
+	protected abstract List<Prompt> definitions(McpRequestContext ctx);
+
+	/**
+	 * Returns the specification of the named prompt, or {@code null} when there is none.
+	 * Visibility is applied by the caller through
+	 * {@link #visible(McpRequestContext, Prompt)}.
 	 */
 	protected abstract @Nullable SyncPromptSpecification lookup(McpRequestContext ctx, String name);
 
 	/**
-	 * Returns every specification visible to the caller. Order is irrelevant; pages are
-	 * sorted by prompt name.
+	 * Decides whether the caller may see {@code prompt}. Consulted by
+	 * {@code prompts/list}, {@code prompts/find} and {@code prompts/get} alike. Defaults
+	 * to the constructor's {@link McpVisibilityFilter}, or {@code true} without one.
 	 */
-	protected abstract List<SyncPromptSpecification> specifications(McpRequestContext ctx);
-
-	protected @Nullable Long listTtlMs(McpRequestContext ctx) {
-		return this.options.ttlMs();
+	protected boolean visible(McpRequestContext ctx, Prompt prompt) {
+		return this.visibility == null || this.visibility.prompt(ctx, prompt);
 	}
 
+	/**
+	 * The {@code cacheScope} cache hint of a list page, or {@code null} to use the
+	 * feature-level default (the TTL always comes from that default). Defaults to
+	 * {@link CacheScope#PRIVATE} when a {@link McpVisibilityFilter} is set.
+	 */
 	protected @Nullable CacheScope listCacheScope(McpRequestContext ctx) {
-		return this.options.cacheScope();
+		return this.visibility != null ? CacheScope.PRIVATE : null;
 	}
 
-	protected final RepositoryOptions options() {
-		return this.options;
+	protected final @Nullable Integer pageSize() {
+		return this.pageSize;
+	}
+
+	protected final @Nullable McpChangeBroadcaster changeBroadcaster() {
+		return this.changeBroadcaster;
+	}
+
+	protected final @Nullable McpVisibilityFilter visibility() {
+		return this.visibility;
 	}
 
 	@Override
 	public PromptsPage list(McpRequestContext ctx, @Nullable String cursor) {
-		Pagination.Page<SyncPromptSpecification> page = Pagination.page(specifications(ctx),
-				spec -> spec.prompt().name(), cursor, this.options.pageSize());
-		List<Prompt> prompts = page.items().stream().map(SyncPromptSpecification::prompt).toList();
-		return new PromptsPage(prompts, page.nextCursor(), listTtlMs(ctx), listCacheScope(ctx));
+		List<Prompt> visiblePrompts = definitions(ctx).stream().filter(prompt -> visible(ctx, prompt)).toList();
+		Pagination.Page<Prompt> page = Pagination.page(visiblePrompts, Prompt::name, cursor, this.pageSize);
+		return new PromptsPage(page.items(), page.nextCursor(), null, listCacheScope(ctx));
 	}
 
 	@Override
 	public @Nullable Prompt find(McpRequestContext ctx, String name) {
-		SyncPromptSpecification spec = lookup(ctx, name);
+		SyncPromptSpecification spec = visibleSpecification(ctx, name);
 		return spec != null ? spec.prompt() : null;
 	}
 
 	@Override
 	public McpSyncResponse<GetPromptOutcome> get(McpRequestContext ctx, GetPromptRequest request) {
-		SyncPromptSpecification spec = lookup(ctx, request.name());
+		SyncPromptSpecification spec = visibleSpecification(ctx, request.name());
 		if (spec == null) {
 			throw McpException.invalidParams("Unknown prompt: " + request.name());
 		}
 		return spec.handler().get(ctx, request);
+	}
+
+	private @Nullable SyncPromptSpecification visibleSpecification(McpRequestContext ctx, String name) {
+		SyncPromptSpecification spec = lookup(ctx, name);
+		return spec != null && visible(ctx, spec.prompt()) ? spec : null;
 	}
 
 	/**
@@ -102,9 +156,8 @@ public abstract class AbstractSyncPromptRepository implements McpSyncPromptRepos
 	 * {@link McpChangeBroadcaster} is configured.
 	 */
 	protected final void broadcastListChanged() {
-		McpChangeBroadcaster broadcaster = this.options.changeBroadcaster();
-		if (broadcaster != null) {
-			broadcaster.broadcast(new ServerChange.PromptsListChanged());
+		if (this.changeBroadcaster != null) {
+			this.changeBroadcaster.broadcast(new ServerChange.PromptsListChanged());
 		}
 	}
 

@@ -16,17 +16,27 @@
 
 package org.springframework.ai.mcp.server.webflux.autoconfigure;
 
+import java.util.Map;
+
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.mcp.modern.McpTransportContexts;
 import org.springframework.ai.mcp.server.common.autoconfigure.McpServerJsonMapperAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.McpServerModernAutoConfiguration;
 import org.springframework.ai.mcp.server.webflux.transport.modern.WebFluxMcpTransport;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.SmartLifecycle;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.reactive.function.server.MockServerRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.server.RouterFunction;
+import org.springframework.web.reactive.function.server.ServerRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,6 +85,30 @@ class McpServerModernWebFluxAutoConfigurationIT {
 	}
 
 	@Test
+	void requestHeadersReachTheTransportContextByDefault() {
+		this.contextRunner.run(context -> {
+			Object extractor = ReflectionTestUtils.getField(context.getBean(WebFluxMcpTransport.class),
+					"contextExtractor");
+			assertThat(extractor).isInstanceOf(HeaderTransportContextExtractor.class);
+
+			ServerRequest request = MockServerRequest.builder()
+				.header("X-Role", "admin")
+				.header("Mcp-Method", "tools/list")
+				.build();
+			McpTransportContext transportContext = ((HeaderTransportContextExtractor) extractor).extract(request);
+			assertThat(McpTransportContexts.header(transportContext, "x-role")).isEqualTo("admin");
+			assertThat(McpTransportContexts.headers(transportContext)).doesNotContainKey("mcp-method");
+		});
+	}
+
+	@Test
+	void userExtractorReplacesTheDefault() {
+		this.contextRunner.withUserConfiguration(ExtractorConfiguration.class)
+			.run(context -> assertThat(context.getBean(WebFluxMcpTransport.class)).extracting("contextExtractor")
+				.isSameAs(context.getBean(McpTransportContextExtractor.class)));
+	}
+
+	@Test
 	void inactiveWhenDisabledOrOtherProtocolOrStdio() {
 		this.contextRunner.withPropertyValues("spring.ai.mcp.server.enabled=false")
 			.run(context -> assertThat(context).doesNotHaveBean(WebFluxMcpTransport.class));
@@ -82,6 +116,16 @@ class McpServerModernWebFluxAutoConfigurationIT {
 			.run(context -> assertThat(context).doesNotHaveBean(WebFluxMcpTransport.class));
 		this.contextRunner.withPropertyValues("spring.ai.mcp.server.stdio=true")
 			.run(context -> assertThat(context).doesNotHaveBean(WebFluxMcpTransport.class));
+	}
+
+	@Configuration
+	static class ExtractorConfiguration {
+
+		@Bean
+		McpTransportContextExtractor<ServerRequest> tenantExtractor() {
+			return request -> McpTransportContext.create(Map.of("tenant", "acme"));
+		}
+
 	}
 
 }

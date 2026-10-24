@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiPredicate;
 
 import io.modelcontextprotocol.modern.McpException;
 import io.modelcontextprotocol.modern.McpSchema.CompleteReference;
@@ -45,7 +46,10 @@ public final class InMemorySyncCompletionRepository implements McpSyncCompletion
 
 	private final Map<String, SyncCompletionSpecification> completions = new ConcurrentHashMap<>();
 
+	private final @Nullable BiPredicate<McpRequestContext, CompleteReference> referenceGuard;
+
 	private InMemorySyncCompletionRepository(Builder builder) {
+		this.referenceGuard = builder.referenceGuard;
 		builder.completions.forEach(this::put);
 	}
 
@@ -69,7 +73,8 @@ public final class InMemorySyncCompletionRepository implements McpSyncCompletion
 	@Override
 	public CompleteResult complete(McpRequestContext ctx, CompleteRequest request) {
 		SyncCompletionSpecification spec = this.completions.get(key(request.ref()));
-		if (spec == null) {
+		if (spec == null || (this.referenceGuard != null && !this.referenceGuard.test(ctx, request.ref()))) {
+			// A reference the caller may not see answers exactly like an unknown one.
 			throw McpException.invalidParams("No completion handler for reference: " + describe(request.ref()));
 		}
 		return spec.handler().complete(ctx, request);
@@ -104,7 +109,20 @@ public final class InMemorySyncCompletionRepository implements McpSyncCompletion
 
 		private final List<SyncCompletionSpecification> completions = new ArrayList<>();
 
+		private @Nullable BiPredicate<McpRequestContext, CompleteReference> referenceGuard;
+
 		private Builder() {
+		}
+
+		/**
+		 * Decides per request whether the caller may complete the given reference, so
+		 * that a prompt or resource template hidden by a {@link McpVisibilityFilter}
+		 * cannot be discovered through {@code completion/complete}. A rejected reference
+		 * answers like an unknown one. Unset, every reference with a handler is served.
+		 */
+		public Builder referenceGuard(@Nullable BiPredicate<McpRequestContext, CompleteReference> referenceGuard) {
+			this.referenceGuard = referenceGuard;
+			return this;
 		}
 
 		public Builder completion(SyncCompletionSpecification specification) {

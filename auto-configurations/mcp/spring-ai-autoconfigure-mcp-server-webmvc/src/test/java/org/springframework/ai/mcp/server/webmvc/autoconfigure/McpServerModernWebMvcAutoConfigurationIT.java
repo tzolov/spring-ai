@@ -16,15 +16,26 @@
 
 package org.springframework.ai.mcp.server.webmvc.autoconfigure;
 
+import java.util.List;
+import java.util.Map;
+
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.mcp.modern.McpTransportContexts;
 import org.springframework.ai.mcp.server.common.autoconfigure.McpServerJsonMapperAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.McpServerModernAutoConfiguration;
 import org.springframework.ai.mcp.server.webmvc.transport.WebMvcModernServerTransport;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.SmartLifecycle;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.function.RouterFunction;
+import org.springframework.web.servlet.function.ServerRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,6 +76,31 @@ class McpServerModernWebMvcAutoConfigurationIT {
 	}
 
 	@Test
+	void requestHeadersReachTheTransportContextByDefault() {
+		this.contextRunner.run(context -> {
+			Object extractor = ReflectionTestUtils.getField(context.getBean(WebMvcModernServerTransport.class),
+					"contextExtractor");
+			assertThat(extractor).isInstanceOf(HeaderTransportContextExtractor.class);
+
+			MockHttpServletRequest servletRequest = new MockHttpServletRequest("POST", "/mcp");
+			servletRequest.addHeader("X-Role", "admin");
+			servletRequest.addHeader("Mcp-Method", "tools/list");
+			McpTransportContext transportContext = ((HeaderTransportContextExtractor) extractor)
+				.extract(ServerRequest.create(servletRequest, List.of()));
+			assertThat(McpTransportContexts.header(transportContext, "x-role")).isEqualTo("admin");
+			assertThat(McpTransportContexts.headers(transportContext)).doesNotContainKey("mcp-method");
+		});
+	}
+
+	@Test
+	void userExtractorReplacesTheDefault() {
+		this.contextRunner.withUserConfiguration(ExtractorConfiguration.class)
+			.run(context -> assertThat(context.getBean(WebMvcModernServerTransport.class))
+				.extracting("contextExtractor")
+				.isSameAs(context.getBean(McpTransportContextExtractor.class)));
+	}
+
+	@Test
 	void inactiveWhenDisabledOrOtherProtocolOrStdio() {
 		this.contextRunner.withPropertyValues("spring.ai.mcp.server.enabled=false")
 			.run(context -> assertThat(context).doesNotHaveBean(WebMvcModernServerTransport.class));
@@ -72,6 +108,16 @@ class McpServerModernWebMvcAutoConfigurationIT {
 			.run(context -> assertThat(context).doesNotHaveBean(WebMvcModernServerTransport.class));
 		this.contextRunner.withPropertyValues("spring.ai.mcp.server.stdio=true")
 			.run(context -> assertThat(context).doesNotHaveBean(WebMvcModernServerTransport.class));
+	}
+
+	@Configuration
+	static class ExtractorConfiguration {
+
+		@Bean
+		McpTransportContextExtractor<ServerRequest> tenantExtractor() {
+			return request -> McpTransportContext.create(Map.of("tenant", "acme"));
+		}
+
 	}
 
 }

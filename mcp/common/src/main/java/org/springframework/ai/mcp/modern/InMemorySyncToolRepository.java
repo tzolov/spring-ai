@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import io.modelcontextprotocol.modern.McpSchema.CacheScope;
 import io.modelcontextprotocol.modern.McpSchema.Tool;
 import io.modelcontextprotocol.modern.server.McpRequestContext;
 import io.modelcontextprotocol.modern.server.feature.McpChangeBroadcaster;
@@ -33,7 +32,9 @@ import org.springframework.util.Assert;
  * An {@link AbstractSyncToolRepository} that keeps {@link SyncToolSpecification}s in a
  * sorted, concurrent map. Tools can be added and removed at runtime; each change is
  * broadcast as {@code notifications/tools/list_changed} when a change broadcaster is
- * configured. Every caller sees every tool.
+ * configured. Every caller sees every tool unless a {@link McpVisibilityFilter} is set,
+ * in which case hidden tools are neither listed nor callable and listings are
+ * {@code cacheScope: private}.
  *
  * @author Christian Tzolov
  * @since 2.2.0
@@ -43,7 +44,7 @@ public final class InMemorySyncToolRepository extends AbstractSyncToolRepository
 	private final Map<String, SyncToolSpecification> tools = new ConcurrentSkipListMap<>();
 
 	private InMemorySyncToolRepository(Builder builder) {
-		super(builder.options);
+		super(builder.changeBroadcaster, builder.pageSize, builder.visibility);
 		builder.tools.forEach(this::put);
 	}
 
@@ -74,7 +75,7 @@ public final class InMemorySyncToolRepository extends AbstractSyncToolRepository
 	}
 
 	/**
-	 * All tool definitions, sorted by name.
+	 * All tool definitions, sorted by name, regardless of any visibility filter.
 	 */
 	public List<Tool> tools() {
 		List<Tool> result = new ArrayList<>(this.tools.size());
@@ -88,8 +89,8 @@ public final class InMemorySyncToolRepository extends AbstractSyncToolRepository
 	}
 
 	@Override
-	protected List<SyncToolSpecification> specifications(McpRequestContext ctx) {
-		return List.copyOf(this.tools.values());
+	protected List<Tool> definitions(McpRequestContext ctx) {
+		return tools();
 	}
 
 	private void put(SyncToolSpecification specification) {
@@ -107,7 +108,11 @@ public final class InMemorySyncToolRepository extends AbstractSyncToolRepository
 
 		private final List<SyncToolSpecification> tools = new ArrayList<>();
 
-		private RepositoryOptions options = RepositoryOptions.defaults();
+		private @Nullable McpChangeBroadcaster changeBroadcaster;
+
+		private @Nullable Integer pageSize;
+
+		private @Nullable McpVisibilityFilter visibility;
 
 		private Builder() {
 		}
@@ -125,7 +130,7 @@ public final class InMemorySyncToolRepository extends AbstractSyncToolRepository
 		}
 
 		public Builder changeBroadcaster(@Nullable McpChangeBroadcaster changeBroadcaster) {
-			this.options = this.options.withChangeBroadcaster(changeBroadcaster);
+			this.changeBroadcaster = changeBroadcaster;
 			return this;
 		}
 
@@ -134,12 +139,15 @@ public final class InMemorySyncToolRepository extends AbstractSyncToolRepository
 		 * one page.
 		 */
 		public Builder pageSize(@Nullable Integer pageSize) {
-			this.options = this.options.withPageSize(pageSize);
+			this.pageSize = pageSize;
 			return this;
 		}
 
-		public Builder cacheHints(@Nullable Long ttlMs, @Nullable CacheScope cacheScope) {
-			this.options = this.options.withCacheHints(ttlMs, cacheScope);
+		/**
+		 * Restricts what each caller sees. Unset, every caller sees every tool.
+		 */
+		public Builder visibility(@Nullable McpVisibilityFilter visibility) {
+			this.visibility = visibility;
 			return this;
 		}
 

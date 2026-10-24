@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import io.modelcontextprotocol.modern.McpSchema.CacheScope;
 import io.modelcontextprotocol.modern.McpSchema.Prompt;
 import io.modelcontextprotocol.modern.server.McpRequestContext;
 import io.modelcontextprotocol.modern.server.feature.McpChangeBroadcaster;
@@ -33,7 +32,7 @@ import org.springframework.util.Assert;
  * An {@link AbstractSyncPromptRepository} that keeps {@link SyncPromptSpecification}s in
  * a sorted, concurrent map. Prompts can be added and removed at runtime; each change is
  * broadcast as {@code notifications/prompts/list_changed} when a change broadcaster is
- * configured. Every caller sees every prompt.
+ * configured. Every caller sees every prompt unless a {@link McpVisibilityFilter} is set.
  *
  * @author Christian Tzolov
  * @since 2.2.0
@@ -43,7 +42,7 @@ public final class InMemorySyncPromptRepository extends AbstractSyncPromptReposi
 	private final Map<String, SyncPromptSpecification> prompts = new ConcurrentSkipListMap<>();
 
 	private InMemorySyncPromptRepository(Builder builder) {
-		super(builder.options);
+		super(builder.changeBroadcaster, builder.pageSize, builder.visibility);
 		builder.prompts.forEach(this::put);
 	}
 
@@ -88,8 +87,8 @@ public final class InMemorySyncPromptRepository extends AbstractSyncPromptReposi
 	}
 
 	@Override
-	protected List<SyncPromptSpecification> specifications(McpRequestContext ctx) {
-		return List.copyOf(this.prompts.values());
+	protected List<Prompt> definitions(McpRequestContext ctx) {
+		return prompts();
 	}
 
 	private void put(SyncPromptSpecification specification) {
@@ -107,7 +106,11 @@ public final class InMemorySyncPromptRepository extends AbstractSyncPromptReposi
 
 		private final List<SyncPromptSpecification> prompts = new ArrayList<>();
 
-		private RepositoryOptions options = RepositoryOptions.defaults();
+		private @Nullable McpChangeBroadcaster changeBroadcaster;
+
+		private @Nullable Integer pageSize;
+
+		private @Nullable McpVisibilityFilter visibility;
 
 		private Builder() {
 		}
@@ -125,7 +128,7 @@ public final class InMemorySyncPromptRepository extends AbstractSyncPromptReposi
 		}
 
 		public Builder changeBroadcaster(@Nullable McpChangeBroadcaster changeBroadcaster) {
-			this.options = this.options.withChangeBroadcaster(changeBroadcaster);
+			this.changeBroadcaster = changeBroadcaster;
 			return this;
 		}
 
@@ -134,12 +137,15 @@ public final class InMemorySyncPromptRepository extends AbstractSyncPromptReposi
 		 * prompts on one page.
 		 */
 		public Builder pageSize(@Nullable Integer pageSize) {
-			this.options = this.options.withPageSize(pageSize);
+			this.pageSize = pageSize;
 			return this;
 		}
 
-		public Builder cacheHints(@Nullable Long ttlMs, @Nullable CacheScope cacheScope) {
-			this.options = this.options.withCacheHints(ttlMs, cacheScope);
+		/**
+		 * Restricts what each caller sees. Unset, every caller sees every prompt.
+		 */
+		public Builder visibility(@Nullable McpVisibilityFilter visibility) {
+			this.visibility = visibility;
 			return this;
 		}
 

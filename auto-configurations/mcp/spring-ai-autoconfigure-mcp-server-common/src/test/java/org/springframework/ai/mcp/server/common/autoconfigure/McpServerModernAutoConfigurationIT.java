@@ -39,6 +39,7 @@ import io.modelcontextprotocol.modern.server.feature.McpSyncToolRepository;
 import io.modelcontextprotocol.modern.server.feature.ToolsPage;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.mcp.annotation.McpComplete;
 import org.springframework.ai.mcp.annotation.McpPrompt;
 import org.springframework.ai.mcp.annotation.McpResource;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -48,6 +49,8 @@ import org.springframework.ai.mcp.modern.InMemorySyncCompletionRepository;
 import org.springframework.ai.mcp.modern.InMemorySyncPromptRepository;
 import org.springframework.ai.mcp.modern.InMemorySyncResourceRepository;
 import org.springframework.ai.mcp.modern.InMemorySyncToolRepository;
+import org.springframework.ai.mcp.modern.McpTransportContexts;
+import org.springframework.ai.mcp.modern.McpVisibilityFilter;
 import org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerAnnotationScannerAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerSpecificationFactoryAutoConfiguration;
 import org.springframework.ai.mcp.server.common.autoconfigure.annotations.ModernServerSpecificationFactoryAutoConfiguration;
@@ -87,10 +90,14 @@ class McpServerModernAutoConfigurationIT {
 		return params;
 	}
 
-	@SuppressWarnings("unchecked")
 	private static Map<String, Object> call(McpServer server, String method, Map<String, Object> params) {
-		McpTransportResponse response = server
-			.handleBlocking(McpTransportContext.EMPTY, new JSONRPCRequest(method, 1, params))
+		return call(server, McpTransportContext.EMPTY, method, params);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> call(McpServer server, McpTransportContext transportContext, String method,
+			Map<String, Object> params) {
+		McpTransportResponse response = server.handleBlocking(transportContext, new JSONRPCRequest(method, 1, params))
 			.block();
 		assertThat(response).isInstanceOf(McpTransportResponse.Result.class);
 		return (Map<String, Object>) ((McpTransportResponse.Result) response).response().result();
@@ -122,7 +129,8 @@ class McpServerModernAutoConfigurationIT {
 	void annotatedBeansAndToolCallbacksAreServed() {
 		this.contextRunner.withUserConfiguration(UserConfiguration.class).run(context -> {
 			InMemorySyncToolRepository tools = context.getBean(InMemorySyncToolRepository.class);
-			assertThat(tools.tools()).extracting(McpSchema.Tool::name).containsExactly("greet", "weather");
+			assertThat(tools.tools()).extracting(McpSchema.Tool::name)
+				.containsExactly("admin_reset", "greet", "weather");
 			assertThat(context.getBean(InMemorySyncResourceRepository.class).resources()).hasSize(1);
 			assertThat(context.getBean(InMemorySyncPromptRepository.class).prompts()).hasSize(1);
 
@@ -185,6 +193,56 @@ class McpServerModernAutoConfigurationIT {
 
 	@Test
 	@SuppressWarnings("unchecked")
+	void visibilityFilterBeansRestrictTheInMemoryRepositoriesPerCaller() {
+		this.contextRunner.withUserConfiguration(UserConfiguration.class, VisibilityConfiguration.class)
+			.run(context -> {
+				McpServer server = context.getBean(McpServer.class);
+				McpTransportContext admin = McpTransportContexts
+					.fromHeaders(each -> each.accept("X-Role", List.of("admin")));
+
+				// Guests see and reach only the public tool; the listing is private.
+				Map<String, Object> guestList = call(server, McpTransportContext.EMPTY, McpSchema.METHOD_TOOLS_LIST,
+						params());
+				assertThat((List<Map<String, Object>>) guestList.get("tools")).extracting(tool -> tool.get("name"))
+					.containsExactly("greet");
+				assertThat(guestList.get("cacheScope")).isEqualTo("private");
+				McpTransportResponse denied = server
+					.handleBlocking(McpTransportContext.EMPTY,
+							new JSONRPCRequest(McpSchema.METHOD_TOOLS_CALL, 1,
+									params("name", "admin_reset", "arguments", Map.of())))
+					.block();
+				assertThat(denied).isInstanceOf(McpTransportResponse.Error.class);
+				assertThat(((McpTransportResponse.Error) denied).response().error().message()).contains("Unknown tool");
+
+				// The admin header unlocks everything, including the prompt and the
+				// resource.
+				Map<String, Object> adminList = call(server, admin, McpSchema.METHOD_TOOLS_LIST, params());
+				assertThat((List<Map<String, Object>>) adminList.get("tools")).extracting(tool -> tool.get("name"))
+					.containsExactly("admin_reset", "greet", "weather");
+				assertThat((List<?>) call(server, McpTransportContext.EMPTY, McpSchema.METHOD_PROMPTS_LIST, params())
+					.get("prompts")).isEmpty();
+				assertThat((List<?>) call(server, admin, McpSchema.METHOD_PROMPTS_LIST, params()).get("prompts"))
+					.hasSize(1);
+				assertThat((List<?>) call(server, McpTransportContext.EMPTY, McpSchema.METHOD_RESOURCES_LIST, params())
+					.get("resources")).isEmpty();
+				assertThat((List<?>) call(server, admin, McpSchema.METHOD_RESOURCES_LIST, params()).get("resources"))
+					.hasSize(1);
+
+				// Completing an argument of the hidden prompt would reveal it.
+				Map<String, Object> completion = params("ref", Map.of("type", "ref/prompt", "name", "p"), "argument",
+						Map.of("name", "topic", "value", "a"));
+				McpTransportResponse hiddenCompletion = server
+					.handleBlocking(McpTransportContext.EMPTY,
+							new JSONRPCRequest(McpSchema.METHOD_COMPLETION_COMPLETE, 1, completion))
+					.block();
+				assertThat(hiddenCompletion).isInstanceOf(McpTransportResponse.Error.class);
+				assertThat(call(server, admin, McpSchema.METHOD_COMPLETION_COMPLETE, completion))
+					.containsKey("completion");
+			});
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
 	void customRepositoryReplacesInMemoryRepository() {
 		this.contextRunner.withUserConfiguration(UserConfiguration.class, CustomRepositoryConfiguration.class)
 			.run(context -> {
@@ -234,7 +292,7 @@ class McpServerModernAutoConfigurationIT {
 			// Modern side is active and sees the annotated bean and the ToolCallback.
 			assertThat(context).hasSingleBean(McpServer.class);
 			assertThat(context).hasBean("modernToolSpecs");
-			assertThat(context.getBean(InMemorySyncToolRepository.class).tools()).hasSize(2);
+			assertThat(context.getBean(InMemorySyncToolRepository.class).tools()).hasSize(3);
 			// Legacy and stateless sides are fully inactive: no servers, no spec
 			// factories, no tool callback converters.
 			assertThat(context).doesNotHaveBean(io.modelcontextprotocol.server.McpSyncServer.class);
@@ -269,8 +327,8 @@ class McpServerModernAutoConfigurationIT {
 				assertThat(context).hasBean("modernToolSpecs");
 				assertThat(context).hasBean("modernResourceSpecs");
 				assertThat(context).hasBean("modernPromptSpecs");
-				// Only the annotated tool is published; the ToolCallback bean is not.
-				assertThat(context.getBean(InMemorySyncToolRepository.class).tools()).hasSize(1);
+				// Only the annotated tools are published; the ToolCallback bean is not.
+				assertThat(context.getBean(InMemorySyncToolRepository.class).tools()).hasSize(2);
 				Map<String, Object> list = call(context.getBean(McpServer.class), McpSchema.METHOD_TOOLS_LIST,
 						params());
 				List<Map<String, Object>> tools = (List<Map<String, Object>>) list.get("tools");
@@ -359,6 +417,36 @@ class McpServerModernAutoConfigurationIT {
 	}
 
 	@Configuration
+	static class VisibilityConfiguration {
+
+		@Bean
+		McpVisibilityFilter adminOnlyUnlessPublic() {
+			// One rule for every primitive: admins see all, others only what is public.
+			return new McpVisibilityFilter() {
+				@Override
+				public boolean tool(McpRequestContext ctx, Tool tool) {
+					return admin(ctx) || "greet".equals(tool.name());
+				}
+
+				@Override
+				public boolean resource(McpRequestContext ctx, McpSchema.Resource resource) {
+					return admin(ctx);
+				}
+
+				@Override
+				public boolean prompt(McpRequestContext ctx, McpSchema.Prompt prompt) {
+					return admin(ctx);
+				}
+
+				private boolean admin(McpRequestContext ctx) {
+					return "admin".equals(McpTransportContexts.header(ctx, "x-role"));
+				}
+			};
+		}
+
+	}
+
+	@Configuration
 	static class CustomRepositoryConfiguration {
 
 		@Bean
@@ -404,6 +492,11 @@ class McpServerModernAutoConfigurationIT {
 			return "Hello " + name;
 		}
 
+		@McpTool(name = "admin_reset", description = "Administrative")
+		public String adminReset() {
+			return "reset";
+		}
+
 		@McpResource(uri = "test://doc", name = "doc")
 		public String doc() {
 			return "doc";
@@ -412,6 +505,11 @@ class McpServerModernAutoConfigurationIT {
 		@McpPrompt(name = "p", description = "p")
 		public String prompt() {
 			return "prompt";
+		}
+
+		@McpComplete(prompt = "p")
+		public List<String> completeTopic(String value) {
+			return List.of(value + "1");
 		}
 
 	}

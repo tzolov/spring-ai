@@ -45,22 +45,30 @@ import org.springframework.util.Assert;
  * resource templates are described by {@link SyncResourceSpecification}s and
  * {@link SyncResourceTemplateSpecification}s.
  * <p>
- * Subclasses provide the visible specifications per request; this class provides paging
- * and cache hints for both list methods, {@code resources/read} dispatch that first tries
- * an exact URI match and then the templates in order, URI template matching (matchers are
- * compiled once per template), and the list-changed and resource-updated broadcasts.
- * {@link InMemorySyncResourceRepository} is the map-backed implementation.
+ * Subclasses provide the definitions for listing ({@link #definitions},
+ * {@link #templateDefinitions}) and the specifications for dispatch ({@link #lookup},
+ * {@link #lookupTemplate}), and may restrict what a caller sees through the two
+ * {@code visible} hooks, which every path consults and which default to the optional
+ * {@link McpVisibilityFilter} given to the constructor. This class provides paging and
+ * the list cache scope for both list methods, {@code resources/read} dispatch that first
+ * tries an exact URI match and then the templates in order, URI template matching
+ * (matchers are compiled once per template), and the list-changed and resource-updated
+ * broadcasts. {@link InMemorySyncResourceRepository} is the map-backed implementation.
  *
  * @author Christian Tzolov
  * @since 2.2.0
  */
 public abstract class AbstractSyncResourceRepository implements McpSyncResourceRepository {
 
-	private final RepositoryOptions options;
+	private final @Nullable McpChangeBroadcaster changeBroadcaster;
 
-	private final McpUriTemplateManagerFactory uriTemplateManagerFactory;
+	private final @Nullable Integer pageSize;
 
 	private final boolean subscribeSupported;
+
+	private final @Nullable McpVisibilityFilter visibility;
+
+	private final McpUriTemplateManagerFactory uriTemplateManagerFactory;
 
 	/**
 	 * Upper bound of the matcher cache. Compiling a template is cheap, so when the bound
@@ -72,77 +80,133 @@ public abstract class AbstractSyncResourceRepository implements McpSyncResourceR
 	private final Map<String, McpUriTemplateManager> matchers = new ConcurrentHashMap<>();
 
 	/**
-	 * Creates a repository with the default URI template manager and without per-resource
-	 * subscriptions.
+	 * Creates a repository that serves every resource on one page to every caller,
+	 * broadcasts no changes and does not advertise per-resource subscriptions.
 	 */
-	protected AbstractSyncResourceRepository(RepositoryOptions options) {
-		this(options, new DefaultMcpUriTemplateManagerFactory(), false);
+	protected AbstractSyncResourceRepository() {
+		this(null, null, false, null);
+	}
+
+	/**
+	 * @param changeBroadcaster receives list-changed and resource-updated broadcasts, or
+	 * {@code null} to broadcast nothing
+	 * @param pageSize the maximum number of items per list page, or {@code null} to serve
+	 * everything on one page
+	 * @param subscribeSupported whether the server advertises
+	 * {@code resources.subscribe}; when true, {@link #broadcastResourceUpdated(String)}
+	 * reaches subscribers
+	 */
+	protected AbstractSyncResourceRepository(@Nullable McpChangeBroadcaster changeBroadcaster,
+			@Nullable Integer pageSize, boolean subscribeSupported) {
+		this(changeBroadcaster, pageSize, subscribeSupported, null);
+	}
+
+	/**
+	 * @param visibility restricts what each caller sees, or {@code null} to show every
+	 * resource and template to every caller
+	 */
+	protected AbstractSyncResourceRepository(@Nullable McpChangeBroadcaster changeBroadcaster,
+			@Nullable Integer pageSize, boolean subscribeSupported, @Nullable McpVisibilityFilter visibility) {
+		this(changeBroadcaster, pageSize, subscribeSupported, visibility, new DefaultMcpUriTemplateManagerFactory());
 	}
 
 	/**
 	 * @param uriTemplateManagerFactory compiles the URI templates used to match
 	 * {@code resources/read} requests against resource templates
-	 * @param subscribeSupported whether the server advertises
-	 * {@code resources.subscribe}; when true, {@link #broadcastResourceUpdated(String)}
-	 * notifies subscribers
 	 */
-	protected AbstractSyncResourceRepository(RepositoryOptions options,
-			McpUriTemplateManagerFactory uriTemplateManagerFactory, boolean subscribeSupported) {
-		Assert.notNull(options, "options must not be null");
+	protected AbstractSyncResourceRepository(@Nullable McpChangeBroadcaster changeBroadcaster,
+			@Nullable Integer pageSize, boolean subscribeSupported, @Nullable McpVisibilityFilter visibility,
+			McpUriTemplateManagerFactory uriTemplateManagerFactory) {
+		Assert.isTrue(pageSize == null || pageSize > 0, "pageSize must be positive");
 		Assert.notNull(uriTemplateManagerFactory, "uriTemplateManagerFactory must not be null");
-		this.options = options;
-		this.uriTemplateManagerFactory = uriTemplateManagerFactory;
+		this.changeBroadcaster = changeBroadcaster;
+		this.pageSize = pageSize;
 		this.subscribeSupported = subscribeSupported;
+		this.visibility = visibility;
+		this.uriTemplateManagerFactory = uriTemplateManagerFactory;
 	}
 
 	/**
-	 * Returns the specification of the resource with exactly this URI as visible to the
-	 * caller, or {@code null} when there is none. Templates are matched separately.
+	 * Returns every static resource definition. Order is irrelevant; pages are sorted by
+	 * URI. Visibility is applied by the caller through
+	 * {@link #visible(McpRequestContext, Resource)}.
+	 */
+	protected abstract List<Resource> definitions(McpRequestContext ctx);
+
+	/**
+	 * Returns every resource template definition. The order decides which template serves
+	 * a URI that several templates match; pages are sorted by URI template. Visibility is
+	 * applied by the caller through
+	 * {@link #visible(McpRequestContext, ResourceTemplate)}.
+	 */
+	protected abstract List<ResourceTemplate> templateDefinitions(McpRequestContext ctx);
+
+	/**
+	 * Returns the specification of the resource with exactly this URI, or {@code null}
+	 * when there is none. Templates are matched separately.
 	 */
 	protected abstract @Nullable SyncResourceSpecification lookup(McpRequestContext ctx, String uri);
 
 	/**
-	 * Returns every static resource specification visible to the caller. Order is
-	 * irrelevant; pages are sorted by URI.
+	 * Returns the specification of the template with exactly this URI template, or
+	 * {@code null} when there is none.
 	 */
-	protected abstract List<SyncResourceSpecification> specifications(McpRequestContext ctx);
+	protected abstract @Nullable SyncResourceTemplateSpecification lookupTemplate(McpRequestContext ctx,
+			String uriTemplate);
 
 	/**
-	 * Returns every resource template specification visible to the caller. The order
-	 * decides which template serves a URI that several templates match; pages are sorted
-	 * by URI template.
+	 * Decides whether the caller may see {@code resource}. A hidden resource is neither
+	 * listed nor readable: a read of its URI is answered {@code Unknown resource} and is
+	 * not handed to a template that would match it. Defaults to the constructor's
+	 * {@link McpVisibilityFilter}, or {@code true} without one.
 	 */
-	protected abstract List<SyncResourceTemplateSpecification> templateSpecifications(McpRequestContext ctx);
-
-	protected @Nullable Long listTtlMs(McpRequestContext ctx) {
-		return this.options.ttlMs();
+	protected boolean visible(McpRequestContext ctx, Resource resource) {
+		return this.visibility == null || this.visibility.resource(ctx, resource);
 	}
 
+	/**
+	 * Decides whether the caller may see {@code template}. A hidden template is neither
+	 * listed nor used to serve reads. Defaults to the constructor's
+	 * {@link McpVisibilityFilter}, or {@code true} without one.
+	 */
+	protected boolean visible(McpRequestContext ctx, ResourceTemplate template) {
+		return this.visibility == null || this.visibility.resourceTemplate(ctx, template);
+	}
+
+	/**
+	 * The {@code cacheScope} cache hint of a list page, or {@code null} to use the
+	 * feature-level default (the TTL always comes from that default). Defaults to
+	 * {@link CacheScope#PRIVATE} when a {@link McpVisibilityFilter} is set.
+	 */
 	protected @Nullable CacheScope listCacheScope(McpRequestContext ctx) {
-		return this.options.cacheScope();
+		return this.visibility != null ? CacheScope.PRIVATE : null;
 	}
 
-	protected final RepositoryOptions options() {
-		return this.options;
+	protected final @Nullable Integer pageSize() {
+		return this.pageSize;
+	}
+
+	protected final @Nullable McpChangeBroadcaster changeBroadcaster() {
+		return this.changeBroadcaster;
+	}
+
+	protected final @Nullable McpVisibilityFilter visibility() {
+		return this.visibility;
 	}
 
 	@Override
 	public ResourcesPage list(McpRequestContext ctx, @Nullable String cursor) {
-		Pagination.Page<SyncResourceSpecification> page = Pagination.page(specifications(ctx),
-				spec -> spec.resource().uri(), cursor, this.options.pageSize());
-		List<Resource> resources = page.items().stream().map(SyncResourceSpecification::resource).toList();
-		return new ResourcesPage(resources, page.nextCursor(), listTtlMs(ctx), listCacheScope(ctx));
+		List<Resource> visibleResources = definitions(ctx).stream().filter(r -> visible(ctx, r)).toList();
+		Pagination.Page<Resource> page = Pagination.page(visibleResources, Resource::uri, cursor, this.pageSize);
+		return new ResourcesPage(page.items(), page.nextCursor(), null, listCacheScope(ctx));
 	}
 
 	@Override
 	public ResourceTemplatesPage listTemplates(McpRequestContext ctx, @Nullable String cursor) {
-		Pagination.Page<SyncResourceTemplateSpecification> page = Pagination.page(templateSpecifications(ctx),
-				spec -> spec.resourceTemplate().uriTemplate(), cursor, this.options.pageSize());
-		List<ResourceTemplate> templates = page.items()
-			.stream()
-			.map(SyncResourceTemplateSpecification::resourceTemplate)
-			.toList();
-		return new ResourceTemplatesPage(templates, page.nextCursor(), listTtlMs(ctx), listCacheScope(ctx));
+		List<ResourceTemplate> visibleTemplates = visibleTemplates(ctx);
+		Pagination.Page<ResourceTemplate> page = Pagination.page(visibleTemplates, ResourceTemplate::uriTemplate,
+				cursor, this.pageSize);
+		return new ResourceTemplatesPage(page.items(), page.nextCursor(), null, listCacheScope(ctx));
 	}
 
 	@Override
@@ -150,13 +214,25 @@ public abstract class AbstractSyncResourceRepository implements McpSyncResourceR
 		String uri = request.uri();
 		SyncResourceSpecification resource = lookup(ctx, uri);
 		if (resource != null) {
+			// A hidden resource must not be served by a template that happens to match
+			// its URI either, so it does not fall through.
+			if (!visible(ctx, resource.resource())) {
+				throw unknownResource(uri);
+			}
 			return resource.handler().read(ctx, request);
 		}
-		SyncResourceTemplateSpecification template = matchTemplate(ctx, uri);
+		ResourceTemplate template = matchTemplate(ctx, uri);
 		if (template != null) {
-			return template.handler().read(ctx, request);
+			SyncResourceTemplateSpecification spec = lookupTemplate(ctx, template.uriTemplate());
+			if (spec != null) {
+				return spec.handler().read(ctx, request);
+			}
 		}
-		throw McpException.invalidParams("Unknown resource: " + uri, Map.of("uri", uri));
+		throw unknownResource(uri);
+	}
+
+	private static McpException unknownResource(String uri) {
+		return McpException.invalidParams("Unknown resource: " + uri, Map.of("uri", uri));
 	}
 
 	@Override
@@ -168,13 +244,17 @@ public abstract class AbstractSyncResourceRepository implements McpSyncResourceR
 	 * Returns the first visible template whose URI template matches {@code uri}, or
 	 * {@code null}.
 	 */
-	protected @Nullable SyncResourceTemplateSpecification matchTemplate(McpRequestContext ctx, String uri) {
-		for (SyncResourceTemplateSpecification spec : templateSpecifications(ctx)) {
-			if (matcher(spec.resourceTemplate().uriTemplate()).matches(uri)) {
-				return spec;
+	protected @Nullable ResourceTemplate matchTemplate(McpRequestContext ctx, String uri) {
+		for (ResourceTemplate template : visibleTemplates(ctx)) {
+			if (matcher(template.uriTemplate()).matches(uri)) {
+				return template;
 			}
 		}
 		return null;
+	}
+
+	private List<ResourceTemplate> visibleTemplates(McpRequestContext ctx) {
+		return templateDefinitions(ctx).stream().filter(t -> visible(ctx, t)).toList();
 	}
 
 	/**
@@ -209,21 +289,21 @@ public abstract class AbstractSyncResourceRepository implements McpSyncResourceR
 	 * {@link McpChangeBroadcaster} is configured.
 	 */
 	protected final void broadcastListChanged() {
-		McpChangeBroadcaster broadcaster = this.options.changeBroadcaster();
-		if (broadcaster != null) {
-			broadcaster.broadcast(new ServerChange.ResourcesListChanged());
+		if (this.changeBroadcaster != null) {
+			this.changeBroadcaster.broadcast(new ServerChange.ResourcesListChanged());
 		}
 	}
 
 	/**
 	 * Broadcasts {@code notifications/resources/updated} for {@code uri} to its
-	 * subscribers, if a {@link McpChangeBroadcaster} is configured.
+	 * subscribers, if a {@link McpChangeBroadcaster} is configured. Subscriptions are
+	 * matched by the SDK without consulting this repository, so visibility does not apply
+	 * to them.
 	 */
 	protected final void broadcastResourceUpdated(String uri) {
 		Assert.hasText(uri, "uri must not be empty");
-		McpChangeBroadcaster broadcaster = this.options.changeBroadcaster();
-		if (broadcaster != null) {
-			broadcaster.broadcast(new ServerChange.ResourceUpdated(uri));
+		if (this.changeBroadcaster != null) {
+			this.changeBroadcaster.broadcast(new ServerChange.ResourceUpdated(uri));
 		}
 	}
 

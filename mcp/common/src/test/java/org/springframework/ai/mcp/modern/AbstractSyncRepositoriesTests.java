@@ -16,13 +16,18 @@
 
 package org.springframework.ai.mcp.modern;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.modern.JsonRpc.JSONRPCRequest;
 import io.modelcontextprotocol.modern.JsonRpc.JSONRPCResponse;
 import io.modelcontextprotocol.modern.McpSchema;
@@ -44,6 +49,7 @@ import io.modelcontextprotocol.modern.server.feature.ResourcesFeature;
 import io.modelcontextprotocol.modern.server.feature.ToolsFeature;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -117,15 +123,16 @@ class AbstractSyncRepositoriesTests {
 		InMemorySyncToolRepository repository = InMemorySyncToolRepository.builder()
 			.tools(IntStream.rangeClosed(1, 5).mapToObj(i -> tool("tool" + i)).toList())
 			.pageSize(2)
-			.cacheHints(1000L, CacheScope.PUBLIC)
 			.build();
 		McpServer server = McpServer.builder()
 			.serverInfo(Implementation.builder("test", "1").build())
-			.feature(ToolsFeature.ofSync(repository))
+			.feature(ToolsFeature.ofSync(repository, McpJsonDefaults.getMapper(), McpJsonDefaults.getSchemaValidator(),
+					1000L, CacheScope.PUBLIC))
 			.build();
 
 		Map<String, Object> page1 = call(server, McpSchema.METHOD_TOOLS_LIST, params());
 		assertThat(names(page1, "tools", "name")).containsExactly("tool1", "tool2");
+		// The repository leaves the hints null, so the feature defaults apply.
 		assertThat(page1.get("ttlMs")).isEqualTo(1000L);
 		assertThat(page1.get("cacheScope")).isEqualTo("public");
 		String cursor1 = (String) page1.get("nextCursor");
@@ -152,7 +159,8 @@ class AbstractSyncRepositoriesTests {
 	void unboundedRepositoriesStillRejectCursors() {
 		assertThatThrownBy(() -> Pagination.page(List.of("a"), s -> s, Pagination.encode("a"), null))
 			.hasMessageContaining("Invalid cursor");
-		assertThatThrownBy(() -> RepositoryOptions.defaults().withPageSize(0)).hasMessageContaining("pageSize");
+		assertThatThrownBy(() -> InMemorySyncToolRepository.builder().pageSize(0).build())
+			.hasMessageContaining("pageSize");
 	}
 
 	@Test
@@ -232,6 +240,36 @@ class AbstractSyncRepositoriesTests {
 			.isLessThanOrEqualTo(AbstractSyncResourceRepository.MAX_CACHED_MATCHERS);
 	}
 
+	@Test
+	void fileSystemRepositoryListsAndReadsFilesThroughTheDefinitionHooks(@TempDir Path root) throws IOException {
+		Files.writeString(root.resolve("a.txt"), "alpha");
+		Files.writeString(root.resolve("b.md"), "# beta");
+		Files.createDirectories(root.resolve("sub"));
+		Files.writeString(root.resolve("sub/c.txt"), "gamma");
+		FileSystemResourceRepository repository = new FileSystemResourceRepository(root, 2);
+		McpServer server = McpServer.builder()
+			.serverInfo(Implementation.builder("test", "1").build())
+			.feature(ResourcesFeature.ofSync(repository))
+			.build();
+
+		Map<String, Object> page1 = call(server, McpSchema.METHOD_RESOURCES_LIST, params());
+		assertThat(names(page1, "resources", "uri")).containsExactly("file:///docs/a.txt", "file:///docs/b.md");
+		Map<String, Object> page2 = call(server, McpSchema.METHOD_RESOURCES_LIST,
+				params("cursor", page1.get("nextCursor")));
+		assertThat(names(page2, "resources", "uri")).containsExactly("file:///docs/sub/c.txt");
+		assertThat(page2).doesNotContainKey("nextCursor");
+		// Listing never asked for a handler: definitions are plain Resource records.
+		assertThat(repository.handlersCreated).isZero();
+
+		assertThat(read(server, "file:///docs/sub/c.txt")).isEqualTo("gamma");
+		assertThat(repository.handlersCreated).isEqualTo(1);
+		assertThat(
+				call(server, McpSchema.METHOD_RESOURCES_READ, params("uri", "file:///docs/../etc/passwd")).get("code"))
+			.isEqualTo(McpSchema.ErrorCodes.INVALID_PARAMS);
+		assertThat(call(server, McpSchema.METHOD_RESOURCES_READ, params("uri", "file:///docs/missing.txt")).get("code"))
+			.isEqualTo(McpSchema.ErrorCodes.INVALID_PARAMS);
+	}
+
 	@SuppressWarnings("unchecked")
 	private static String read(McpServer server, String uri) {
 		Map<String, Object> result = call(server, McpSchema.METHOD_RESOURCES_READ, params("uri", uri));
@@ -246,32 +284,102 @@ class AbstractSyncRepositoriesTests {
 
 		private final Map<String, List<SyncToolSpecification>> byTenant = new HashMap<>();
 
-		TenantToolRepository() {
-			super(RepositoryOptions.defaults().withCacheHints(60_000L, CacheScope.PUBLIC));
-		}
-
 		void register(String tenant, SyncToolSpecification specification) {
 			this.byTenant.computeIfAbsent(tenant, t -> new ArrayList<>()).add(specification);
 		}
 
-		private List<SyncToolSpecification> visible(McpRequestContext ctx) {
+		private List<SyncToolSpecification> ownedBy(McpRequestContext ctx) {
 			Object tenant = ctx.transportContext().get(TENANT);
 			return tenant != null ? this.byTenant.getOrDefault(tenant, List.of()) : List.of();
 		}
 
 		@Override
 		protected @Nullable SyncToolSpecification lookup(McpRequestContext ctx, String name) {
-			return visible(ctx).stream().filter(spec -> spec.tool().name().equals(name)).findFirst().orElse(null);
+			return ownedBy(ctx).stream().filter(spec -> spec.tool().name().equals(name)).findFirst().orElse(null);
 		}
 
 		@Override
-		protected List<SyncToolSpecification> specifications(McpRequestContext ctx) {
-			return visible(ctx);
+		protected List<Tool> definitions(McpRequestContext ctx) {
+			return ownedBy(ctx).stream().map(SyncToolSpecification::tool).toList();
 		}
 
 		@Override
 		protected @Nullable CacheScope listCacheScope(McpRequestContext ctx) {
 			return CacheScope.PRIVATE;
+		}
+
+	}
+
+	/**
+	 * Scenario from MODERN.md §3.1 (customising the repositories): files under a root served as resources.
+	 * Listing walks the tree and returns definitions only; a handler is created on read.
+	 */
+	static final class FileSystemResourceRepository extends AbstractSyncResourceRepository {
+
+		private static final String PREFIX = "file:///docs/";
+
+		private final Path root;
+
+		int handlersCreated;
+
+		FileSystemResourceRepository(Path root, int pageSize) {
+			super(null, pageSize, false);
+			this.root = root.toAbsolutePath().normalize();
+		}
+
+		private @Nullable Path resolve(String uri) {
+			if (!uri.startsWith(PREFIX)) {
+				return null;
+			}
+			Path path = this.root.resolve(uri.substring(PREFIX.length())).normalize();
+			return path.startsWith(this.root) && Files.isRegularFile(path) ? path : null;
+		}
+
+		private String uriOf(Path path) {
+			return PREFIX + this.root.relativize(path).toString().replace('\\', '/');
+		}
+
+		@Override
+		protected List<Resource> definitions(McpRequestContext ctx) {
+			try (Stream<Path> files = Files.walk(this.root)) {
+				return files.filter(Files::isRegularFile)
+					.map(path -> Resource.builder(uriOf(path), path.getFileName().toString()).build())
+					.toList();
+			}
+			catch (IOException e) {
+				throw new IllegalStateException(e);
+			}
+		}
+
+		@Override
+		protected List<ResourceTemplate> templateDefinitions(McpRequestContext ctx) {
+			return List.of();
+		}
+
+		@Override
+		protected @Nullable SyncResourceSpecification lookup(McpRequestContext ctx, String uri) {
+			Path path = resolve(uri);
+			if (path == null) {
+				return null;
+			}
+			this.handlersCreated++;
+			return new SyncResourceSpecification(Resource.builder(uri, path.getFileName().toString()).build(),
+					(context, request) -> {
+						try {
+							return McpSyncResponse.result(ReadResourceResult
+								.builder(List.of(TextResourceContents.builder(uri, Files.readString(path)).build()))
+								.build());
+						}
+						catch (IOException e) {
+							throw new IllegalStateException(e);
+						}
+					});
+		}
+
+		@Override
+		protected @Nullable SyncResourceTemplateSpecification lookupTemplate(McpRequestContext ctx,
+				String uriTemplate) {
+			return null;
 		}
 
 	}
