@@ -52,6 +52,16 @@ class AnnotatedMethodDiscoveryTests {
 		assertThat(scanned).isEmpty();
 	}
 
+	@Test
+	void findMethodAnnotationsLooksAtInterfaceAndSuperclassMethods() {
+		Set<Class<? extends Annotation>> annotations = Set.of(MyAnnotation.class, AnotherAnnotation.class);
+
+		assertThat(AnnotatedMethodDiscovery.findMethodAnnotations(Implementation.class, annotations))
+			.containsExactlyInAnyOrder(MyAnnotation.class, AnotherAnnotation.class);
+		assertThat(AnnotatedMethodDiscovery.findMethodAnnotations(Contract.class, annotations))
+			.containsExactly(MyAnnotation.class);
+	}
+
 	@Target(ElementType.METHOD)
 	@Retention(RetentionPolicy.RUNTIME)
 	@interface MyAnnotation {
@@ -61,6 +71,17 @@ class AnnotatedMethodDiscoveryTests {
 	@Target(ElementType.METHOD)
 	@Retention(RetentionPolicy.RUNTIME)
 	@interface AnotherAnnotation {
+
+	}
+
+	interface Contract {
+
+		@MyAnnotation
+		void methodA();
+
+	}
+
+	static class Implementation extends PlainClass implements Contract {
 
 	}
 

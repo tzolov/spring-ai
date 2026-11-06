@@ -17,30 +17,55 @@
 package org.springframework.ai.mcp.annotation.spring.scan;
 
 import java.lang.annotation.Annotation;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.util.Assert;
 import org.springframework.util.ReflectionUtils;
 
-class AnnotatedMethodDiscovery {
+/**
+ * Finds the MCP annotations present on the methods of a class.
+ *
+ * @author Christian Tzolov
+ * @since 2.1.0
+ */
+public class AnnotatedMethodDiscovery {
 
 	protected final Set<Class<? extends Annotation>> targetAnnotations;
 
-	AnnotatedMethodDiscovery(Set<Class<? extends Annotation>> targetAnnotations) {
+	public AnnotatedMethodDiscovery(Set<Class<? extends Annotation>> targetAnnotations) {
+		Assert.notNull(targetAnnotations, "Target annotations must not be null");
 		this.targetAnnotations = targetAnnotations;
 	}
 
+	/**
+	 * Return the target annotation types present on at least one method of the given
+	 * class, including inherited and interface methods.
+	 * @param beanClass the class to scan
+	 * @return the annotation types found, in encounter order
+	 */
 	protected Set<Class<? extends Annotation>> scan(Class<?> beanClass) {
-		Set<Class<? extends Annotation>> foundAnnotations = new HashSet<>();
+		return findMethodAnnotations(beanClass, this.targetAnnotations);
+	}
 
-		// Scan all methods in the bean class
+	/**
+	 * Return the given annotation types that are present on at least one method of the
+	 * given class, including inherited and interface methods.
+	 * @param beanClass the class to scan
+	 * @param targetAnnotations the method annotations to look for
+	 * @return the annotation types found, in encounter order
+	 * @since 2.1.0
+	 */
+	public static Set<Class<? extends Annotation>> findMethodAnnotations(Class<?> beanClass,
+			Set<Class<? extends Annotation>> targetAnnotations) {
+		Set<Class<? extends Annotation>> foundAnnotations = new LinkedHashSet<>();
 		ReflectionUtils.doWithMethods(beanClass, method -> {
-			this.targetAnnotations.forEach(annotationType -> {
+			for (Class<? extends Annotation> annotationType : targetAnnotations) {
 				if (AnnotationUtils.findAnnotation(method, annotationType) != null) {
 					foundAnnotations.add(annotationType);
 				}
-			});
+			}
 		});
 		return foundAnnotations;
 	}

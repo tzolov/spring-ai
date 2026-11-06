@@ -422,6 +422,39 @@ class McpServerModernAutoConfigurationIT {
 		});
 	}
 
+	@Test
+	void handlersOnBeanDeclaredWithInterfaceTypeAreServed() {
+		this.contextRunner.withUserConfiguration(InterfaceTypedBeanConfiguration.class).run(context -> {
+			assertThat(context).hasNotFailed();
+			InMemorySyncToolRepository tools = context.getBean(InMemorySyncToolRepository.class);
+			assertThat(tools.list(null, null).tools()).extracting(McpSchema.Tool::name).containsExactly("impl_tool");
+		});
+	}
+
+	@Test
+	void annotatedBeanDependingOnRepositoryFailsWithHint() {
+		this.contextRunner.withUserConfiguration(RepositoryDependentBeanConfiguration.class).run(context -> {
+			assertThat(context).hasFailed();
+			assertThat(context.getStartupFailure())
+				.hasStackTraceContaining("Bean 'repositoryDependentBean' has MCP handler methods")
+				.hasStackTraceContaining("ObjectProvider");
+		});
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void annotatedBeanInjectingRepositoryLazilyIsServed() {
+		this.contextRunner.withUserConfiguration(LazyRepositoryDependentBeanConfiguration.class).run(context -> {
+			assertThat(context).hasNotFailed();
+			InMemorySyncToolRepository tools = context.getBean(InMemorySyncToolRepository.class);
+			assertThat(tools.list(null, null).tools()).extracting(McpSchema.Tool::name).containsExactly("count_tools");
+			Map<String, Object> result = call(context.getBean(McpServer.class), McpSchema.METHOD_TOOLS_CALL,
+					params("name", "count_tools", "arguments", Map.of()));
+			List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
+			assertThat(content.get(0).get("text")).isEqualTo("1 tool(s)");
+		});
+	}
+
 	@Configuration
 	static class ToolCallbackOnlyConfiguration {
 
@@ -486,6 +519,79 @@ class McpServerModernAutoConfigurationIT {
 
 	record RepositoryConsumer(InMemorySyncToolRepository tools, InMemorySyncResourceRepository resources,
 			InMemorySyncPromptRepository prompts, InMemorySyncCompletionRepository completions) {
+	}
+
+	interface ToolsApi {
+
+		String tool();
+
+	}
+
+	static class ToolsImpl implements ToolsApi {
+
+		@Override
+		@McpTool(name = "impl_tool", description = "Declared on the implementation only")
+		public String tool() {
+			return "impl";
+		}
+
+	}
+
+	@Configuration
+	static class InterfaceTypedBeanConfiguration {
+
+		@Bean
+		ToolsApi toolsApi() {
+			return new ToolsImpl();
+		}
+
+	}
+
+	static class RepositoryDependentBean {
+
+		RepositoryDependentBean(InMemorySyncToolRepository tools) {
+		}
+
+		@McpTool(name = "dependent", description = "Depends on the repository")
+		public String dependent() {
+			return "dependent";
+		}
+
+	}
+
+	@Configuration
+	static class RepositoryDependentBeanConfiguration {
+
+		@Bean
+		RepositoryDependentBean repositoryDependentBean(InMemorySyncToolRepository tools) {
+			return new RepositoryDependentBean(tools);
+		}
+
+	}
+
+	static class LazyRepositoryDependentBean {
+
+		private final ObjectProvider<InMemorySyncToolRepository> tools;
+
+		LazyRepositoryDependentBean(ObjectProvider<InMemorySyncToolRepository> tools) {
+			this.tools = tools;
+		}
+
+		@McpTool(name = "count_tools", description = "Counts the tools")
+		public String countTools() {
+			return this.tools.getObject().list(null, null).tools().size() + " tool(s)";
+		}
+
+	}
+
+	@Configuration
+	static class LazyRepositoryDependentBeanConfiguration {
+
+		@Bean
+		LazyRepositoryDependentBean lazyRepositoryDependentBean(ObjectProvider<InMemorySyncToolRepository> tools) {
+			return new LazyRepositoryDependentBean(tools);
+		}
+
 	}
 
 	@Configuration

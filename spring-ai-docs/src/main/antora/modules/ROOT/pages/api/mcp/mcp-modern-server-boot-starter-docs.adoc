@@ -304,7 +304,10 @@ The lists are the contract between the scanning side and the repository side: a 
 
 `SyncResourceRegistration` and `SyncResourceTemplateRegistration` pair a resource or template definition with its `McpSyncResource`, which carries no definition of its own; `SyncCompletionRegistration` pairs a `CompleteReference` with its handler.
 There can be several beans of each list type, so inject them as `ObjectProvider<List<McpSyncTool>>` and flatten, as the examples below do.
-The `ObjectProvider` also keeps the repository from being created before the annotation scanner has registered the annotated beans, which an eager `List<McpSyncTool>` parameter can cause.
+The annotation scanner finds the annotated beans from their bean definitions before any bean is created, so the lists are complete whenever the repository is created, whatever the bean order.
+A bean with annotated methods must not depend eagerly on a repository or on the server, because the repository is built from that bean's handlers; inject such a dependency as `ObjectProvider<McpSyncToolRepository>` instead, and the context fails with a message that says so otherwise.
+The scanner reads the declared type of a bean definition, so a `@Bean` method must return the concrete class that declares the annotated methods, not an interface or `Object`; a bean found only once it is created is logged as a warning when its handlers come too late.
+A custom `ServerMcpAnnotatedBeans` bean replaces the scanner; it is a `BeanFactoryPostProcessor`, so declare it in a `static` `@Bean` method.
 
 [source,java]
 ----
@@ -366,7 +369,7 @@ McpSyncToolRepository toolRepository(ObjectProvider<List<McpSyncTool>> tools, Mc
 }
 ----
 
-The `ObjectProvider` matters: the `List<McpSyncTool>` beans come from the annotation scanner, and injecting the lists directly can create the repository before the scanner has run.
+The `ObjectProvider` matters because there can be several `List<McpSyncTool>` beans, from the annotation scanner and from `ToolCallback` conversion.
 A listing that depends on the caller must be returned with `cacheScope: private`, as above, so that a shared cache never serves one caller's view to another.
 A wrapper that filters a page after the repository has paged it can return a short page; filter before paging, or leave `spring.ai.mcp.server.modern.page-size` unset so that everything is served on one page.
 Resource subscriptions on `subscriptions/listen` are matched by the SDK without consulting the repository, so a hidden resource's update notifications still reach a client that subscribed to its URI.
